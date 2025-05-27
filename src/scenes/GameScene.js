@@ -1,6 +1,7 @@
 import { Player } from '../entities/Player.js';
 import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
+import { Structure } from '../entities/Structure.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 
 export class GameScene extends Phaser.Scene {
@@ -37,8 +38,10 @@ export class GameScene extends Phaser.Scene {
     create() {
         console.log('GameScene create() called');
         
-        // World bounds - make smaller for testing
-        this.physics.world.setBounds(0, 0, 1024, 768);
+        // Expand world bounds for larger farm area
+        const worldWidth = 2048;
+        const worldHeight = 1536;
+        this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
         
         // Create groups first
         this.bullets = this.physics.add.group({
@@ -52,52 +55,94 @@ export class GameScene extends Phaser.Scene {
             runChildUpdate: true
         });
         
+        this.structures = this.physics.add.group({
+            classType: Structure,
+            runChildUpdate: false
+        });
+        
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
         
-        // Create simple background first
-        this.add.rectangle(512, 384, 1024, 768, 0x4a7c59); // Simple grass color
+        // Create detailed farm background and structures
+        this.createFarmMap();
         
-        // Create player
+        // Create player in farmyard area
         console.log('Creating player...');
         try {
-            this.player = new Player(this, 512, 384);
-            console.log('Player created successfully:', this.player);
-            console.log('Player texture key:', this.player.texture.key);
-            console.log('Player visible:', this.player.visible);
-            console.log('Player alpha:', this.player.alpha);
-            console.log('Player depth:', this.player.depth);
-            console.log('Player world position:', this.player.x, this.player.y);
-            console.log('Player display size:', this.player.displayWidth, this.player.displayHeight);
-            console.log('Player in display list:', this.children.exists(this.player));
-            console.log('Player active:', this.player.active);
+            // Check if player textures exist
+            if (this.textures.exists('player_down')) {
+                this.player = new Player(this, 400, 600); // Start near farmhouse
+                console.log('Player created successfully with textures');
+            } else {
+                console.warn('Player textures not found, creating fallback player');
+                // Create a simple colored rectangle as player
+                this.player = this.add.rectangle(400, 600, 48, 64, 0x00ff00);
+                this.player.setDepth(1000);
+                
+                // Add basic physics
+                this.physics.add.existing(this.player);
+                this.player.body.setCollideWorldBounds(true);
+                this.player.body.setSize(32, 40);
+                this.player.body.setOffset(8, 24);
+                
+                // Add basic movement methods
+                this.player.health = 100;
+                this.player.maxHealth = 100;
+                this.player.damage = 30;
+                this.player.canTakeDamage = () => true;
+                this.player.takeDamage = (amount) => {
+                    this.player.health -= amount;
+                    window.gameState.playerHealth = this.player.health;
+                    window.updateUI.health(this.player.health, this.player.maxHealth);
+                };
+                this.player.shoot = () => {
+                    console.log('Player shooting (fallback)');
+                    // Create a simple bullet
+                    const bullet = this.bullets.get();
+                    if (bullet) {
+                        bullet.fire(this.player.x, this.player.y - 20, 0, -300);
+                    }
+                };
+                this.player.reload = () => console.log('Player reloading (fallback)');
+                this.player.update = () => {};
+                this.player.setDirection = () => {};
+                this.player.setMoving = () => {};
+            }
             
             // Make sure player is visible and properly positioned
             this.player.setVisible(true);
             this.player.setActive(true);
-            this.player.setPosition(512, 384);
-            this.player.setDepth(100);
+            this.player.setDepth(1000); // High depth to stay on top
             this.player.setAlpha(1);
             this.player.setScale(1);
             
             console.log('Player final position:', this.player.x, this.player.y);
-            console.log('Player final depth:', this.player.depth);
-            console.log('Player final scale:', this.player.scaleX, this.player.scaleY);
-            console.log('Player final visible:', this.player.visible);
-            console.log('Player final alpha:', this.player.alpha);
         } catch (error) {
             console.error('Error creating player:', error);
             // Create a simple placeholder if player creation fails
-            this.player = this.add.rectangle(512, 384, 64, 64, 0x00ff00);
-            this.player.setDepth(100);
-            console.log('Created placeholder player');
+            this.player = this.add.rectangle(400, 600, 64, 64, 0x00ff00);
+            this.player.setDepth(1000);
+            this.physics.add.existing(this.player);
+            this.player.body.setCollideWorldBounds(true);
+            
+            // Add minimal required properties
+            this.player.health = 100;
+            this.player.damage = 30;
+            this.player.canTakeDamage = () => true;
+            this.player.takeDamage = () => {};
+            this.player.shoot = () => {};
+            this.player.reload = () => {};
+            this.player.update = () => {};
+            this.player.setDirection = () => {};
+            this.player.setMoving = () => {};
+            
+            console.log('Created minimal fallback player');
         }
         
-        // Camera setup - no zoom, no following for now
-        this.cameras.main.setBounds(0, 0, 1024, 768);
+        // Camera setup - follow player with bounds
+        this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+        this.cameras.main.startFollow(this.player, true, 0.05, 0.05);
         this.cameras.main.setZoom(1);
-        console.log('Camera bounds set to:', this.cameras.main.getBounds());
-        console.log('Camera zoom:', this.cameras.main.zoom);
         
         // Input
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -125,8 +170,6 @@ export class GameScene extends Phaser.Scene {
         this.updateUI();
         
         console.log('GameScene create() completed');
-        console.log('World bounds:', this.physics.world.bounds);
-        console.log('Camera position:', this.cameras.main.scrollX, this.cameras.main.scrollY);
         
         // Create inventory hotbar (Minecraft style)
         this.createInventoryHotbar();
@@ -142,54 +185,372 @@ export class GameScene extends Phaser.Scene {
         this.updateDebugText();
     }
 
-    createBackground() {
-        // Create a tiled grass background
+    createFarmMap() {
+        console.log('Creating detailed farm map...');
+        
+        try {
+            // Create base terrain
+            this.createTerrain();
+            
+            // Create farm structures
+            this.createFarmStructures();
+            
+            // Create fencing and barriers
+            this.createFencing();
+            
+            // Create vegetation and crops
+            this.createVegetation();
+            
+            // Create paths and roads
+            this.createPaths();
+            
+            console.log('Farm map created successfully');
+        } catch (error) {
+            console.error('Error creating farm map, using fallback:', error);
+            this.createFallbackBackground();
+        }
+    }
+    
+    createFallbackBackground() {
+        console.log('Creating fallback background...');
+        
+        // Create simple grass background
+        const worldWidth = 2048;
+        const worldHeight = 1536;
+        const tileSize = 64;
+        
+        for (let x = 0; x < worldWidth; x += tileSize) {
+            for (let y = 0; y < worldHeight; y += tileSize) {
+                const tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, 0x4a7c59);
+                tile.setDepth(-10);
+            }
+        }
+        
+        // Add some simple structures for gameplay
+        const farmhouse = this.add.rectangle(400, 500, 128, 96, 0x8B4513);
+        farmhouse.setDepth(500);
+        this.physics.add.existing(farmhouse, true);
+        farmhouse.body.setImmovable(true);
+        
+        const barn = this.add.rectangle(800, 400, 160, 120, 0xB22222);
+        barn.setDepth(400);
+        this.physics.add.existing(barn, true);
+        barn.body.setImmovable(true);
+        
+        // Add collision for player
+        if (this.player && this.player.body) {
+            this.physics.add.collider(this.player, farmhouse);
+            this.physics.add.collider(this.player, barn);
+        }
+        
+        console.log('Fallback background created');
+    }
+    
+    createTerrain() {
         const tileSize = 64;
         const worldWidth = 2048;
         const worldHeight = 1536;
         
+        console.log('Creating terrain...');
+        
+        // Create varied terrain base
         for (let x = 0; x < worldWidth; x += tileSize) {
             for (let y = 0; y < worldHeight; y += tileSize) {
-                const grassTile = this.add.image(x + tileSize/2, y + tileSize/2, 'grass');
-                grassTile.setDepth(-10);
+                let terrainType = 'grass_texture';
+                
+                // Farmyard area (around farmhouse)
+                if (x >= 256 && x <= 640 && y >= 448 && y <= 768) {
+                    terrainType = 'farmyard';
+                }
+                // Crop fields
+                else if (x >= 768 && x <= 1280 && y >= 256 && y <= 640) {
+                    terrainType = Math.random() > 0.5 ? 'crop_field' : 'corn_field';
+                }
+                // Dirt paths
+                else if ((x >= 320 && x <= 384 && y >= 0 && y <= worldHeight) || // Main vertical path
+                         (x >= 0 && x <= worldWidth && y >= 576 && y <= 640)) { // Main horizontal path
+                    terrainType = 'dirt_path';
+                }
+                
+                // Check if texture exists, fallback to simple colored rectangle
+                let tile;
+                if (this.textures.exists(terrainType)) {
+                    tile = this.add.image(x + tileSize/2, y + tileSize/2, terrainType);
+                } else {
+                    console.warn(`Texture ${terrainType} not found, using fallback`);
+                    // Create fallback colored rectangles
+                    let color = 0x4a7c59; // Default grass green
+                    if (terrainType === 'farmyard') color = 0x8B7355; // Brown
+                    else if (terrainType === 'crop_field') color = 0x228B22; // Green
+                    else if (terrainType === 'corn_field') color = 0x32CD32; // Lime green
+                    else if (terrainType === 'dirt_path') color = 0x8B7355; // Light brown
+                    
+                    tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, color);
+                }
+                tile.setDepth(-10);
             }
         }
         
-        // Add some trees and rocks for cover
-        this.addEnvironmentObjects();
+        console.log('Terrain created successfully');
     }
     
-    addEnvironmentObjects() {
-        const objects = [
-            { sprite: 'tree', count: 15 },
-            { sprite: 'rock', count: 10 },
-            { sprite: 'bush', count: 20 }
+    createFarmStructures() {
+        console.log('Creating farm structures...');
+        
+        try {
+            // Main farmhouse (player's base)
+            const farmhouse = this.createStructureWithFallback(400, 500, 'farmhouse', {
+                type: 'farmhouse',
+                material: 'wood',
+                health: 500,
+                destructible: true
+            }, 0x8B4513, 128, 96);
+            
+            // Large red barn
+            const barn = this.createStructureWithFallback(800, 400, 'barn', {
+                type: 'barn',
+                material: 'wood',
+                health: 800,
+                destructible: true
+            }, 0xB22222, 160, 120);
+            
+            // Grain silo
+            const silo = this.createStructureWithFallback(1000, 350, 'silo', {
+                type: 'silo',
+                material: 'metal',
+                health: 1000,
+                destructible: false
+            }, 0xC0C0C0, 48, 120);
+            
+            // Water well
+            const well = this.createStructureWithFallback(600, 650, 'well', {
+                type: 'well',
+                material: 'stone',
+                health: 400,
+                destructible: false
+            }, 0x696969, 64, 64);
+            
+            // Old tractor
+            const tractor = this.createStructureWithFallback(700, 550, 'tractor', {
+                type: 'tractor',
+                material: 'metal',
+                health: 300,
+                destructible: true
+            }, 0x228B22, 96, 64);
+            
+            // Scattered wooden crates
+            const cratePositions = [
+                {x: 450, y: 650}, {x: 520, y: 680}, {x: 380, y: 720},
+                {x: 850, y: 500}, {x: 900, y: 520}, {x: 750, y: 480}
+            ];
+            
+            cratePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'wooden_crate', {
+                    type: 'wooden_crate',
+                    material: 'wood',
+                    health: 50,
+                    destructible: true
+                }, 0xD2691E, 32, 32);
+            });
+            
+            // Hay bales
+            const hayPositions = [
+                {x: 550, y: 750}, {x: 620, y: 780}, {x: 480, y: 800},
+                {x: 950, y: 450}, {x: 1020, y: 480}
+            ];
+            
+            hayPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'hay_bale', {
+                    type: 'hay_bale',
+                    material: 'wood',
+                    health: 75,
+                    destructible: true
+                }, 0xDAA520, 48, 32);
+            });
+            
+            console.log('Farm structures created successfully');
+        } catch (error) {
+            console.error('Error creating farm structures:', error);
+        }
+    }
+    
+    createStructureWithFallback(x, y, textureKey, config, fallbackColor, width, height) {
+        try {
+            if (this.textures.exists(textureKey)) {
+                const structure = new Structure(this, x, y, textureKey, config);
+                this.structures.add(structure);
+                return structure;
+            } else {
+                console.warn(`Texture ${textureKey} not found, creating fallback`);
+                // Create a simple colored rectangle as fallback
+                const fallbackRect = this.add.rectangle(x, y, width, height, fallbackColor);
+                fallbackRect.setDepth(y + height);
+                
+                // Add basic physics body for collision
+                this.physics.add.existing(fallbackRect, true);
+                fallbackRect.body.setSize(width * 0.8, height * 0.8);
+                fallbackRect.body.setImmovable(true);
+                
+                return fallbackRect;
+            }
+        } catch (error) {
+            console.error(`Error creating structure ${textureKey}:`, error);
+            // Create minimal fallback
+            const fallbackRect = this.add.rectangle(x, y, width || 32, height || 32, fallbackColor || 0x666666);
+            fallbackRect.setDepth(y + (height || 32));
+            return fallbackRect;
+        }
+    }
+    
+    createFencing() {
+        console.log('Creating fencing...');
+        
+        try {
+            // Perimeter wooden fence around farmyard
+            const fencePositions = [
+                // Top fence line
+                {x: 256, y: 448}, {x: 320, y: 448}, {x: 384, y: 448}, {x: 448, y: 448}, 
+                {x: 512, y: 448}, {x: 576, y: 448}, {x: 640, y: 448},
+                
+                // Bottom fence line
+                {x: 256, y: 768}, {x: 320, y: 768}, {x: 384, y: 768}, {x: 448, y: 768}, 
+                {x: 512, y: 768}, {x: 576, y: 768}, {x: 640, y: 768},
+                
+                // Left fence line
+                {x: 256, y: 512}, {x: 256, y: 576}, {x: 256, y: 640}, {x: 256, y: 704},
+                
+                // Right fence line
+                {x: 640, y: 512}, {x: 640, y: 576}, {x: 640, y: 640}, {x: 640, y: 704}
+            ];
+            
+            fencePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'wooden_fence', {
+                    type: 'wooden_fence',
+                    material: 'wood',
+                    health: 80,
+                    destructible: true
+                }, 0x8B4513, 64, 32);
+            });
+            
+            // Gate entrance
+            this.createStructureWithFallback(352, 768, 'gate', {
+                type: 'gate',
+                material: 'wood',
+                health: 60,
+                destructible: true
+            }, 0x8B4513, 64, 32);
+            
+            // Stone fence around crop fields
+            const stoneFencePositions = [
+                {x: 768, y: 256}, {x: 832, y: 256}, {x: 896, y: 256}, {x: 960, y: 256},
+                {x: 1024, y: 256}, {x: 1088, y: 256}, {x: 1152, y: 256}, {x: 1216, y: 256}, {x: 1280, y: 256},
+                
+                {x: 768, y: 640}, {x: 832, y: 640}, {x: 896, y: 640}, {x: 960, y: 640},
+                {x: 1024, y: 640}, {x: 1088, y: 640}, {x: 1152, y: 640}, {x: 1216, y: 640}, {x: 1280, y: 640}
+            ];
+            
+            stoneFencePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'stone_fence', {
+                    type: 'stone_fence',
+                    material: 'stone',
+                    health: 200,
+                    destructible: false
+                }, 0x696969, 64, 24);
+            });
+            
+            console.log('Fencing created successfully');
+        } catch (error) {
+            console.error('Error creating fencing:', error);
+        }
+    }
+    
+    createVegetation() {
+        console.log('Creating vegetation...');
+        
+        try {
+            // Large oak trees for cover and atmosphere
+            const oakPositions = [
+                {x: 150, y: 200}, {x: 300, y: 150}, {x: 1800, y: 300},
+                {x: 1900, y: 800}, {x: 200, y: 1200}, {x: 1700, y: 1300}
+            ];
+            
+            oakPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'oak_tree', {
+                    type: 'oak_tree',
+                    material: 'wood',
+                    health: 150,
+                    destructible: true
+                }, 0x228B22, 80, 96);
+            });
+            
+            // Apple orchard
+            const applePositions = [
+                {x: 1400, y: 400}, {x: 1500, y: 380}, {x: 1600, y: 420},
+                {x: 1450, y: 500}, {x: 1550, y: 480}, {x: 1650, y: 520},
+                {x: 1400, y: 600}, {x: 1500, y: 580}, {x: 1600, y: 620}
+            ];
+            
+            applePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'apple_tree', {
+                    type: 'apple_tree',
+                    material: 'wood',
+                    health: 100,
+                    destructible: true
+                }, 0x32CD32, 64, 80);
+            });
+            
+            // Decorative bushes (non-collidable)
+            const bushPositions = [
+                {x: 180, y: 400}, {x: 220, y: 450}, {x: 160, y: 500},
+                {x: 1800, y: 600}, {x: 1850, y: 650}, {x: 1750, y: 700},
+                {x: 400, y: 1200}, {x: 450, y: 1250}, {x: 350, y: 1300}
+            ];
+            
+            bushPositions.forEach(pos => {
+                if (this.textures.exists('bush')) {
+                    const bush = this.add.image(pos.x, pos.y, 'bush');
+                    bush.setDepth(pos.y);
+                } else {
+                    const bush = this.add.circle(pos.x, pos.y, 16, 0x228B22);
+                    bush.setDepth(pos.y);
+                }
+            });
+            
+            // Flower patches for decoration
+            const flowerPositions = [
+                {x: 500, y: 400}, {x: 550, y: 420}, {x: 480, y: 380},
+                {x: 1200, y: 800}, {x: 1250, y: 820}, {x: 1180, y: 780}
+            ];
+            
+            flowerPositions.forEach(pos => {
+                if (this.textures.exists('flowers')) {
+                    const flowers = this.add.image(pos.x, pos.y, 'flowers');
+                    flowers.setDepth(pos.y - 5);
+                } else {
+                    const flowers = this.add.circle(pos.x, pos.y, 8, 0xFF69B4);
+                    flowers.setDepth(pos.y - 5);
+                }
+            });
+            
+            console.log('Vegetation created successfully');
+        } catch (error) {
+            console.error('Error creating vegetation:', error);
+        }
+    }
+    
+    createPaths() {
+        // Main dirt road connecting areas - already created in terrain
+        // Add some path markers and signs
+        
+        // Simple path markers (rocks)
+        const markerPositions = [
+            {x: 352, y: 300}, {x: 352, y: 900}, {x: 352, y: 1200},
+            {x: 600, y: 608}, {x: 900, y: 608}, {x: 1200, y: 608}
         ];
         
-        objects.forEach(obj => {
-            for (let i = 0; i < obj.count; i++) {
-                const x = Phaser.Math.Between(100, 1948);
-                const y = Phaser.Math.Between(100, 1436);
-                
-                // Make sure not too close to player spawn
-                if (Phaser.Math.Distance.Between(x, y, 512, 384) > 150) {
-                    const envObj = this.physics.add.staticSprite(x, y, obj.sprite);
-                    envObj.setDepth(y); // Depth sorting for Pokemon-style layering
-                    
-                    // Add collision for trees and rocks - FIXED: Only if player exists and has body
-                    if ((obj.sprite === 'tree' || obj.sprite === 'rock') && this.player && this.player.body) {
-                        envObj.body.setSize(envObj.width * 0.6, envObj.height * 0.3);
-                        envObj.body.setOffset(envObj.width * 0.2, envObj.height * 0.7);
-                        
-                        try {
-                            this.physics.add.collider(this.player, envObj);
-                            console.log(`Added collision for ${obj.sprite} at ${x}, ${y}`);
-                        } catch (error) {
-                            console.error(`Error adding collision for ${obj.sprite}:`, error);
-                        }
-                    }
-                }
-            }
+        markerPositions.forEach(pos => {
+            const marker = this.add.circle(pos.x, pos.y, 8, 0x696969);
+            marker.setDepth(pos.y);
         });
     }
 
@@ -284,32 +645,39 @@ export class GameScene extends Phaser.Scene {
     spawnZombie() {
         console.log('Spawning zombie...');
         
-        // Spawn zombie near the edges of the screen, but visible
+        // Spawn zombie near the edges of the world, but not too close to player
         const playerX = this.player.x;
         const playerY = this.player.y;
+        const worldWidth = 2048;
+        const worldHeight = 1536;
         
         let spawnX, spawnY;
         const side = Phaser.Math.Between(0, 3);
-        const margin = 100; // Distance from edge
+        const margin = 150; // Distance from edge
+        const minDistanceFromPlayer = 300; // Minimum distance from player
         
-        switch (side) {
-            case 0: // Top
-                spawnX = Phaser.Math.Between(margin, 1024 - margin);
-                spawnY = margin;
-                break;
-            case 1: // Right
-                spawnX = 1024 - margin;
-                spawnY = Phaser.Math.Between(margin, 768 - margin);
-                break;
-            case 2: // Bottom
-                spawnX = Phaser.Math.Between(margin, 1024 - margin);
-                spawnY = 768 - margin;
-                break;
-            case 3: // Left
-                spawnX = margin;
-                spawnY = Phaser.Math.Between(margin, 768 - margin);
-                break;
-        }
+        let attempts = 0;
+        do {
+            switch (side) {
+                case 0: // Top
+                    spawnX = Phaser.Math.Between(margin, worldWidth - margin);
+                    spawnY = margin;
+                    break;
+                case 1: // Right
+                    spawnX = worldWidth - margin;
+                    spawnY = Phaser.Math.Between(margin, worldHeight - margin);
+                    break;
+                case 2: // Bottom
+                    spawnX = Phaser.Math.Between(margin, worldWidth - margin);
+                    spawnY = worldHeight - margin;
+                    break;
+                case 3: // Left
+                    spawnX = margin;
+                    spawnY = Phaser.Math.Between(margin, worldHeight - margin);
+                    break;
+            }
+            attempts++;
+        } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < 10);
         
         console.log(`Spawning zombie at position: ${spawnX}, ${spawnY}`);
         
@@ -317,10 +685,6 @@ export class GameScene extends Phaser.Scene {
         this.zombies.add(zombie);
         
         console.log('Zombie created:', zombie);
-        console.log('Zombie position:', zombie.x, zombie.y);
-        console.log('Zombie visible:', zombie.visible);
-        console.log('Zombie scale:', zombie.scaleX, zombie.scaleY);
-        console.log('Zombie texture:', zombie.texture.key);
         console.log('Total zombies:', this.zombies.children.size);
         
         window.updateUI.zombiesLeft(this.zombiesInWave - this.zombies.children.size);
@@ -331,34 +695,103 @@ export class GameScene extends Phaser.Scene {
         this.createBloodSplat(zombie.x, zombie.y);
         
         // Damage zombie
-        zombie.takeDamage(25);
+        const killed = zombie.takeDamage(this.player.damage);
         
-        if (zombie.health <= 0) {
-            // Zombie died
-            window.gameState.score += 100;
+        if (killed) {
+            window.gameState.score += 10;
             window.gameState.zombiesKilled++;
-            zombie.destroy();
+            window.updateUI.score(window.gameState.score);
         }
         
-        // Deactivate bullet for reuse
-        bullet.deactivate();
+        // Remove bullet
+        bullet.setActive(false);
+        bullet.setVisible(false);
         
-        this.updateUI();
+        // Screen shake
+        this.cameras.main.shake(50, 0.005);
     }
     
+    bulletHitStructure(bullet, structure) {
+        // Only wooden structures can be damaged by bullets
+        if (structure.material === 'wood' && structure.isDestructible) {
+            const destroyed = structure.bulletHit(this.player.damage);
+            
+            if (destroyed) {
+                console.log(`Structure ${structure.structureType} destroyed by bullet!`);
+                // Award points for destroying structures
+                window.gameState.score += 5;
+                window.updateUI.score(window.gameState.score);
+            }
+        } else {
+            // Create spark effect for non-destructible structures
+            this.createSparkEffect(bullet.x, bullet.y);
+        }
+        
+        // Remove bullet
+        bullet.setActive(false);
+        bullet.setVisible(false);
+    }
+    
+    createSparkEffect(x, y) {
+        const sparkCount = 5;
+        
+        for (let i = 0; i < sparkCount; i++) {
+            const spark = this.add.rectangle(x, y, 2, 2, 0xFFD700);
+            spark.setDepth(1000);
+            
+            this.tweens.add({
+                targets: spark,
+                x: x + Phaser.Math.Between(-20, 20),
+                y: y + Phaser.Math.Between(-20, 20),
+                alpha: 0,
+                duration: 300,
+                ease: 'Power2',
+                onComplete: () => {
+                    spark.destroy();
+                }
+            });
+        }
+    }
+
     playerHitZombie(player, zombie) {
         if (player.canTakeDamage()) {
             player.takeDamage(20);
             
             // Knockback effect
             const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, player.x, player.y);
-            player.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
+            player.body.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
             
-            this.updateUI();
+            // Stop knockback after short time
+            this.time.delayedCall(100, () => {
+                if (player.body) {
+                    player.body.setVelocity(0, 0);
+                }
+            });
             
-            if (window.gameState.playerHealth <= 0) {
+            if (player.health <= 0) {
                 this.gameOver();
             }
+        }
+    }
+    
+    zombieHitStructure(zombie, structure) {
+        // Zombies attack wooden structures
+        if (structure.material === 'wood' && structure.isDestructible) {
+            const destroyed = structure.zombieAttack(5); // Zombies do less damage than bullets
+            
+            if (destroyed) {
+                console.log(`Structure ${structure.structureType} destroyed by zombie!`);
+            }
+            
+            // Zombie briefly stops to attack
+            zombie.body.setVelocity(0, 0);
+            this.time.delayedCall(500, () => {
+                if (zombie.body) {
+                    // Resume movement toward player
+                    const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+                    zombie.body.setVelocity(Math.cos(angle) * zombie.speed, Math.sin(angle) * zombie.speed);
+                }
+            });
         }
     }
     
@@ -478,24 +911,22 @@ export class GameScene extends Phaser.Scene {
     }
     
     setupCollisions() {
-        console.log('Setting up collisions...');
+        // Player vs zombies
+        this.physics.add.overlap(this.player, this.zombies, this.playerHitZombie, null, this);
         
-        // Only set up collisions if player has a physics body
-        if (this.player && this.player.body) {
-            console.log('Player body:', this.player.body);
-            console.log('Bullets group:', this.bullets);
-            console.log('Zombies group:', this.zombies);
-            
-            // Bullet hits zombie
-            this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
-            console.log('Bullet-zombie collision set up');
-            
-            // Player hits zombie
-            this.physics.add.overlap(this.player, this.zombies, this.playerHitZombie, null, this);
-            console.log('Player-zombie collision set up');
-        } else {
-            console.error('Cannot set up collisions - player or player body missing');
-        }
+        // Bullets vs zombies
+        this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
+        
+        // Player vs structures
+        this.physics.add.collider(this.player, this.structures);
+        
+        // Bullets vs structures
+        this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
+        
+        // Zombies vs structures
+        this.physics.add.collider(this.zombies, this.structures, this.zombieHitStructure, null, this);
+        
+        console.log('Collisions set up with structures');
     }
     
     updateDebugText() {

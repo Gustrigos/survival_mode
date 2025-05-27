@@ -153,7 +153,10 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Death
         if (this.health <= 0) {
             this.die();
+            return true; // Zombie was killed
         }
+        
+        return false; // Zombie was damaged but not killed
     }
     
     die() {

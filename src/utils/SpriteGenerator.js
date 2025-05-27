@@ -11,6 +11,9 @@ export class SpriteGenerator {
         this.createMuzzleFlash(scene);
         this.createShellCasing(scene);
         
+        // Add farm environment sprites
+        this.createFarmSprites(scene);
+        
         console.log('All simple sprites generated');
     }
     
@@ -751,5 +754,660 @@ export class SpriteGenerator {
         graphics.destroy();
         
         console.log('Shell casing sprite created (detailed casing)');
+    }
+    
+    static createFarmSprites(scene) {
+        console.log('Generating farm environment sprites...');
+        
+        // Farm structures
+        this.createFarmhouse(scene);
+        this.createBarn(scene);
+        this.createSilo(scene);
+        this.createWell(scene);
+        this.createTractor(scene);
+        
+        // Fencing and barriers
+        this.createWoodenFence(scene);
+        this.createStoneFence(scene);
+        this.createGate(scene);
+        this.createWoodenCrate(scene);
+        this.createHayBale(scene);
+        
+        // Vegetation and crops
+        this.createCropField(scene);
+        this.createCornField(scene);
+        this.createAppleTree(scene);
+        this.createOakTree(scene);
+        this.createBush(scene);
+        this.createGrass(scene);
+        this.createFlowers(scene);
+        
+        // Ground textures
+        this.createDirtPath(scene);
+        this.createGrassTexture(scene);
+        this.createFarmyard(scene);
+        
+        console.log('Farm sprites generated');
+    }
+    
+    static createFarmhouse(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Main house structure (128x96)
+        graphics.fillStyle(0x8B4513); // Brown wood walls
+        graphics.fillRect(0, 32, 128, 64);
+        
+        // Roof
+        graphics.fillStyle(0x654321); // Dark brown roof
+        graphics.fillTriangle(0, 32, 64, 0, 128, 32);
+        
+        // Roof shingles detail
+        graphics.fillStyle(0x5D4037);
+        for (let y = 8; y < 32; y += 6) {
+            for (let x = 8; x < 120; x += 12) {
+                graphics.fillRect(x, y, 8, 4);
+            }
+        }
+        
+        // Chimney
+        graphics.fillStyle(0x8D6E63);
+        graphics.fillRect(96, 4, 16, 28);
+        graphics.fillStyle(0x5D4037);
+        graphics.fillRect(94, 2, 20, 4);
+        
+        // Windows
+        graphics.fillStyle(0x87CEEB); // Sky blue glass
+        graphics.fillRect(16, 48, 16, 16); // Left window
+        graphics.fillRect(96, 48, 16, 16); // Right window
+        
+        // Window frames
+        graphics.fillStyle(0x654321);
+        graphics.strokeRect(14, 46, 20, 20);
+        graphics.strokeRect(94, 46, 20, 20);
+        
+        // Window cross frames
+        graphics.fillRect(23, 46, 2, 20);
+        graphics.fillRect(14, 55, 20, 2);
+        graphics.fillRect(103, 46, 2, 20);
+        graphics.fillRect(94, 55, 20, 2);
+        
+        // Door
+        graphics.fillStyle(0x5D4037); // Dark brown door
+        graphics.fillRect(56, 64, 16, 32);
+        
+        // Door handle
+        graphics.fillStyle(0xFFD700); // Gold handle
+        graphics.fillCircle(68, 80, 2);
+        
+        // Door panels
+        graphics.fillStyle(0x4A2C2A);
+        graphics.fillRect(58, 68, 12, 12);
+        graphics.fillRect(58, 82, 12, 12);
+        
+        // Foundation
+        graphics.fillStyle(0x696969);
+        graphics.fillRect(0, 94, 128, 4);
+        
+        // Porch
+        graphics.fillStyle(0x8B7355);
+        graphics.fillRect(48, 88, 32, 8);
+        
+        // Porch posts
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(50, 72, 4, 24);
+        graphics.fillRect(74, 72, 4, 24);
+        
+        graphics.generateTexture('farmhouse', 128, 96);
+        graphics.destroy();
+    }
+    
+    static createBarn(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Main barn structure (160x120)
+        graphics.fillStyle(0xB22222); // Classic red barn
+        graphics.fillRect(0, 40, 160, 80);
+        
+        // Roof
+        graphics.fillStyle(0x8B0000); // Dark red roof
+        graphics.fillTriangle(0, 40, 80, 0, 160, 40);
+        
+        // Roof ridge
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(76, 0, 8, 40);
+        
+        // Weather vane
+        graphics.fillStyle(0xFFD700);
+        graphics.fillRect(78, -8, 4, 12);
+        graphics.fillTriangle(74, -8, 82, -8, 78, -16);
+        
+        // Large barn doors
+        graphics.fillStyle(0x8B4513); // Brown doors
+        graphics.fillRect(60, 80, 40, 40);
+        
+        // Door panels and hardware
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(62, 82, 18, 36);
+        graphics.fillRect(82, 82, 18, 36);
+        
+        // Door hinges
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillRect(60, 85, 4, 6);
+        graphics.fillRect(60, 105, 4, 6);
+        graphics.fillRect(96, 85, 4, 6);
+        graphics.fillRect(96, 105, 4, 6);
+        
+        // Hay loft window
+        graphics.fillStyle(0x4A4A4A);
+        graphics.fillRect(70, 20, 20, 16);
+        
+        // Side windows
+        graphics.fillStyle(0x4A4A4A);
+        graphics.fillRect(20, 60, 12, 12);
+        graphics.fillRect(128, 60, 12, 12);
+        
+        // Barn siding lines
+        graphics.fillStyle(0xA0522D);
+        for (let y = 45; y < 120; y += 8) {
+            graphics.fillRect(0, y, 160, 2);
+        }
+        
+        // Foundation
+        graphics.fillStyle(0x696969);
+        graphics.fillRect(0, 118, 160, 4);
+        
+        graphics.generateTexture('barn', 160, 120);
+        graphics.destroy();
+    }
+    
+    static createSilo(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Main silo cylinder (48x120)
+        graphics.fillStyle(0xC0C0C0); // Silver metal
+        graphics.fillRect(0, 20, 48, 100);
+        
+        // Silo bands
+        graphics.fillStyle(0x808080);
+        for (let y = 25; y < 115; y += 15) {
+            graphics.fillRect(0, y, 48, 3);
+        }
+        
+        // Dome top
+        graphics.fillStyle(0xA0A0A0);
+        graphics.fillEllipse(24, 20, 48, 40);
+        
+        // Ladder
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(20, 30, 3, 90);
+        for (let y = 35; y < 115; y += 10) {
+            graphics.fillRect(17, y, 9, 2);
+        }
+        
+        // Chute
+        graphics.fillStyle(0x808080);
+        graphics.fillRect(40, 100, 20, 8);
+        graphics.fillRect(56, 108, 8, 12);
+        
+        graphics.generateTexture('silo', 48, 120);
+        graphics.destroy();
+    }
+    
+    static createWell(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Well base (64x64)
+        graphics.fillStyle(0x696969); // Stone
+        graphics.fillCircle(32, 32, 30);
+        
+        // Inner well
+        graphics.fillStyle(0x000080); // Dark blue water
+        graphics.fillCircle(32, 32, 20);
+        
+        // Well posts
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(8, 8, 6, 32);
+        graphics.fillRect(50, 8, 6, 32);
+        
+        // Roof
+        graphics.fillStyle(0x654321);
+        graphics.fillTriangle(4, 8, 32, -8, 60, 8);
+        
+        // Rope and bucket
+        graphics.fillStyle(0xD2691E);
+        graphics.fillRect(31, 10, 2, 20);
+        graphics.fillRect(28, 28, 8, 6);
+        
+        graphics.generateTexture('well', 64, 64);
+        graphics.destroy();
+    }
+    
+    static createTractor(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Tractor body (96x64)
+        graphics.fillStyle(0x228B22); // Green body
+        graphics.fillRect(16, 24, 64, 32);
+        
+        // Engine hood
+        graphics.fillStyle(0x32CD32);
+        graphics.fillRect(16, 24, 32, 20);
+        
+        // Cabin
+        graphics.fillStyle(0x4A4A4A);
+        graphics.fillRect(48, 16, 24, 24);
+        
+        // Windows
+        graphics.fillStyle(0x87CEEB);
+        graphics.fillRect(50, 18, 8, 8);
+        graphics.fillRect(62, 18, 8, 8);
+        
+        // Large rear wheels
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillCircle(72, 48, 16);
+        graphics.fillStyle(0x000000);
+        graphics.fillCircle(72, 48, 12);
+        
+        // Small front wheels
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillCircle(24, 48, 10);
+        graphics.fillStyle(0x000000);
+        graphics.fillCircle(24, 48, 7);
+        
+        // Exhaust pipe
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillRect(20, 8, 4, 16);
+        
+        graphics.generateTexture('tractor', 96, 64);
+        graphics.destroy();
+    }
+    
+    static createWoodenFence(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Fence section (64x32)
+        graphics.fillStyle(0x8B4513); // Brown wood
+        
+        // Fence posts
+        graphics.fillRect(0, 8, 8, 24);
+        graphics.fillRect(56, 8, 8, 24);
+        
+        // Horizontal rails
+        graphics.fillRect(8, 12, 48, 4);
+        graphics.fillRect(8, 20, 48, 4);
+        graphics.fillRect(8, 28, 48, 4);
+        
+        // Wood grain texture
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(1, 10, 6, 1);
+        graphics.fillRect(2, 15, 4, 1);
+        graphics.fillRect(57, 10, 6, 1);
+        graphics.fillRect(58, 15, 4, 1);
+        
+        graphics.generateTexture('wooden_fence', 64, 32);
+        graphics.destroy();
+    }
+    
+    static createStoneFence(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Stone fence section (64x24)
+        graphics.fillStyle(0x696969); // Gray stone
+        
+        // Stone blocks
+        for (let x = 0; x < 64; x += 16) {
+            for (let y = 8; y < 24; y += 8) {
+                graphics.fillRect(x, y, 14, 6);
+                graphics.fillStyle(0x808080);
+                graphics.fillRect(x, y, 14, 2);
+                graphics.fillStyle(0x696969);
+            }
+        }
+        
+        graphics.generateTexture('stone_fence', 64, 24);
+        graphics.destroy();
+    }
+    
+    static createGate(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Gate (64x32)
+        graphics.fillStyle(0x8B4513); // Brown wood
+        
+        // Gate posts
+        graphics.fillRect(0, 8, 8, 24);
+        graphics.fillRect(56, 8, 8, 24);
+        
+        // Gate frame
+        graphics.fillRect(8, 12, 48, 4);
+        graphics.fillRect(8, 28, 48, 4);
+        graphics.fillRect(8, 12, 4, 20);
+        graphics.fillRect(52, 12, 4, 20);
+        
+        // Diagonal brace
+        graphics.fillRect(12, 16, 36, 2);
+        graphics.fillRect(16, 20, 28, 2);
+        graphics.fillRect(20, 24, 20, 2);
+        
+        // Hinges
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillRect(6, 14, 4, 3);
+        graphics.fillRect(6, 26, 4, 3);
+        
+        graphics.generateTexture('gate', 64, 32);
+        graphics.destroy();
+    }
+    
+    static createWoodenCrate(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Wooden crate (32x32)
+        graphics.fillStyle(0xD2691E); // Orange-brown wood
+        graphics.fillRect(0, 0, 32, 32);
+        
+        // Wood planks
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(0, 0, 32, 4);
+        graphics.fillRect(0, 8, 32, 4);
+        graphics.fillRect(0, 16, 32, 4);
+        graphics.fillRect(0, 24, 32, 4);
+        
+        // Metal bands
+        graphics.fillStyle(0x2F4F4F);
+        graphics.fillRect(0, 6, 32, 2);
+        graphics.fillRect(0, 22, 32, 2);
+        graphics.fillRect(6, 0, 2, 32);
+        graphics.fillRect(24, 0, 2, 32);
+        
+        // Nails
+        graphics.fillStyle(0x000000);
+        graphics.fillCircle(8, 4, 1);
+        graphics.fillCircle(24, 4, 1);
+        graphics.fillCircle(8, 28, 1);
+        graphics.fillCircle(24, 28, 1);
+        
+        graphics.generateTexture('wooden_crate', 32, 32);
+        graphics.destroy();
+    }
+    
+    static createHayBale(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Hay bale (48x32)
+        graphics.fillStyle(0xDAA520); // Golden hay
+        graphics.fillRect(0, 8, 48, 24);
+        
+        // Hay texture
+        graphics.fillStyle(0xB8860B);
+        for (let x = 2; x < 46; x += 4) {
+            for (let y = 10; y < 30; y += 3) {
+                graphics.fillRect(x, y, 2, 1);
+            }
+        }
+        
+        // Binding straps
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(12, 8, 3, 24);
+        graphics.fillRect(33, 8, 3, 24);
+        
+        graphics.generateTexture('hay_bale', 48, 32);
+        graphics.destroy();
+    }
+    
+    static createCropField(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Crop field tile (32x32)
+        graphics.fillStyle(0x8B4513); // Brown soil
+        graphics.fillRect(0, 0, 32, 32);
+        
+        // Crop rows
+        graphics.fillStyle(0x228B22); // Green crops
+        for (let x = 4; x < 28; x += 8) {
+            for (let y = 4; y < 28; y += 6) {
+                graphics.fillRect(x, y, 4, 4);
+                graphics.fillRect(x + 1, y - 2, 2, 2);
+            }
+        }
+        
+        graphics.generateTexture('crop_field', 32, 32);
+        graphics.destroy();
+    }
+    
+    static createCornField(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Corn field tile (32x32)
+        graphics.fillStyle(0x8B4513); // Brown soil
+        graphics.fillRect(0, 0, 32, 32);
+        
+        // Corn stalks
+        graphics.fillStyle(0x228B22); // Green stalks
+        for (let x = 6; x < 26; x += 10) {
+            graphics.fillRect(x, 8, 3, 20);
+            graphics.fillRect(x + 1, 4, 1, 8);
+            
+            // Corn ears
+            graphics.fillStyle(0xFFD700);
+            graphics.fillRect(x - 1, 12, 2, 6);
+            graphics.fillRect(x + 3, 16, 2, 6);
+            graphics.fillStyle(0x228B22);
+        }
+        
+        graphics.generateTexture('corn_field', 32, 32);
+        graphics.destroy();
+    }
+    
+    static createAppleTree(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Apple tree (64x80)
+        // Trunk
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(26, 40, 12, 40);
+        
+        // Tree crown
+        graphics.fillStyle(0x228B22);
+        graphics.fillCircle(32, 32, 28);
+        
+        // Apples
+        graphics.fillStyle(0xFF0000);
+        graphics.fillCircle(20, 25, 3);
+        graphics.fillCircle(35, 20, 3);
+        graphics.fillCircle(45, 30, 3);
+        graphics.fillCircle(25, 40, 3);
+        graphics.fillCircle(40, 35, 3);
+        
+        // Tree texture
+        graphics.fillStyle(0x32CD32);
+        for (let i = 0; i < 20; i++) {
+            const x = 10 + Math.random() * 44;
+            const y = 10 + Math.random() * 44;
+            graphics.fillCircle(x, y, 2);
+        }
+        
+        graphics.generateTexture('apple_tree', 64, 80);
+        graphics.destroy();
+    }
+    
+    static createOakTree(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Oak tree (80x96)
+        // Trunk
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(34, 48, 16, 48);
+        
+        // Large crown
+        graphics.fillStyle(0x228B22);
+        graphics.fillCircle(40, 40, 35);
+        
+        // Branch details
+        graphics.fillStyle(0x8B4513);
+        graphics.fillRect(20, 35, 12, 6);
+        graphics.fillRect(52, 30, 12, 6);
+        graphics.fillRect(15, 45, 10, 5);
+        graphics.fillRect(60, 40, 10, 5);
+        
+        // Darker foliage for depth
+        graphics.fillStyle(0x006400);
+        graphics.fillCircle(25, 30, 15);
+        graphics.fillCircle(55, 35, 15);
+        graphics.fillCircle(40, 20, 18);
+        
+        graphics.generateTexture('oak_tree', 80, 96);
+        graphics.destroy();
+    }
+    
+    static createBush(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Bush (32x24)
+        graphics.fillStyle(0x228B22);
+        graphics.fillCircle(16, 16, 14);
+        
+        // Bush texture
+        graphics.fillStyle(0x32CD32);
+        graphics.fillCircle(10, 12, 6);
+        graphics.fillCircle(22, 10, 6);
+        graphics.fillCircle(8, 20, 5);
+        graphics.fillCircle(24, 20, 5);
+        
+        // Some berries
+        graphics.fillStyle(0x8B0000);
+        graphics.fillCircle(12, 14, 1);
+        graphics.fillCircle(20, 12, 1);
+        graphics.fillCircle(18, 18, 1);
+        
+        graphics.generateTexture('bush', 32, 24);
+        graphics.destroy();
+    }
+    
+    static createGrass(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Grass tile (64x64)
+        graphics.fillStyle(0x228B22); // Base green
+        graphics.fillRect(0, 0, 64, 64);
+        
+        // Grass texture variation
+        graphics.fillStyle(0x32CD32);
+        for (let i = 0; i < 30; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillRect(x, y, 2, 4);
+        }
+        
+        // Darker grass patches
+        graphics.fillStyle(0x006400);
+        for (let i = 0; i < 15; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillRect(x, y, 3, 3);
+        }
+        
+        graphics.generateTexture('grass', 64, 64);
+        graphics.destroy();
+    }
+    
+    static createFlowers(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Flower patch (32x32)
+        graphics.fillStyle(0x228B22); // Grass base
+        graphics.fillRect(0, 0, 32, 32);
+        
+        // Various flowers
+        const colors = [0xFF69B4, 0xFFD700, 0xFF4500, 0x9370DB, 0xFF1493];
+        for (let i = 0; i < 8; i++) {
+            const x = 4 + Math.random() * 24;
+            const y = 4 + Math.random() * 24;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            graphics.fillStyle(color);
+            graphics.fillCircle(x, y, 2);
+            graphics.fillStyle(0x228B22);
+            graphics.fillRect(x - 0.5, y + 1, 1, 4);
+        }
+        
+        graphics.generateTexture('flowers', 32, 32);
+        graphics.destroy();
+    }
+    
+    static createDirtPath(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Dirt path tile (64x64)
+        graphics.fillStyle(0x8B7355); // Light brown dirt
+        graphics.fillRect(0, 0, 64, 64);
+        
+        // Path texture
+        graphics.fillStyle(0x654321);
+        for (let i = 0; i < 20; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillRect(x, y, 2, 2);
+        }
+        
+        // Small stones
+        graphics.fillStyle(0x696969);
+        for (let i = 0; i < 10; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillCircle(x, y, 1);
+        }
+        
+        graphics.generateTexture('dirt_path', 64, 64);
+        graphics.destroy();
+    }
+    
+    static createGrassTexture(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Enhanced grass texture (64x64)
+        graphics.fillStyle(0x4a7c59); // Base grass color
+        graphics.fillRect(0, 0, 64, 64);
+        
+        // Grass variation
+        graphics.fillStyle(0x5a8c69);
+        for (let i = 0; i < 25; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillRect(x, y, 3, 3);
+        }
+        
+        graphics.fillStyle(0x3a6c49);
+        for (let i = 0; i < 15; i++) {
+            const x = Math.random() * 64;
+            const y = Math.random() * 64;
+            graphics.fillRect(x, y, 2, 2);
+        }
+        
+        graphics.generateTexture('grass_texture', 64, 64);
+        graphics.destroy();
+    }
+    
+    static createFarmyard(scene) {
+        const graphics = scene.add.graphics();
+        
+        // Farmyard ground (64x64)
+        graphics.fillStyle(0x8B7355); // Packed dirt
+        graphics.fillRect(0, 0, 64, 64);
+        
+        // Hay scattered around
+        graphics.fillStyle(0xDAA520);
+        for (let i = 0; i < 12; i++) {
+            const x = Math.random() * 60 + 2;
+            const y = Math.random() * 60 + 2;
+            graphics.fillRect(x, y, 3, 2);
+        }
+        
+        // Wheel tracks
+        graphics.fillStyle(0x654321);
+        graphics.fillRect(10, 0, 4, 64);
+        graphics.fillRect(50, 0, 4, 64);
+        
+        graphics.generateTexture('farmyard', 64, 64);
+        graphics.destroy();
     }
 } 
