@@ -3,79 +3,125 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Zombie Survival - Apocalypse</title>
+    <title>Zombie Survival - Phaser Edition</title>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
-      
-      html,
       body {
         margin: 0;
         padding: 0;
-        overflow: hidden;
-        background: linear-gradient(135deg, #2c1810 0%, #1a0f0a 50%, #0d0706 100%);
-        cursor: crosshair;
-        font-family: 'Orbitron', 'Courier New', monospace;
-      }
-      
-      #game-canvas {
-        display: block;
-        background: radial-gradient(circle at center, #3d2f1f 0%, #2a1f15 70%, #1a130e 100%);
-      }
-
-      /* Loading screen */
-      #loading {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(135deg, #000 0%, #1a0f0a 50%, #2c1810 100%);
+        background: #2c3e50;
         display: flex;
         justify-content: center;
         align-items: center;
-        flex-direction: column;
-        color: #ff0000;
+        min-height: 100vh;
+        font-family: 'Courier New', monospace;
+      }
+      
+      #game-container {
+        border: 3px solid #34495e;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      }
+      
+      #ui {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        color: white;
+        font-size: 18px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #e74c3c;
+        pointer-events: none; /* Prevent UI from blocking game input */
+      }
+      
+      .ui-bar {
+        width: 200px;
+        height: 20px;
+        background: #34495e;
+        border: 2px solid #2c3e50;
+        margin: 5px 0;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      
+      .ui-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+        border-radius: 8px;
+      }
+      
+      .health-fill {
+        background: linear-gradient(90deg, #e74c3c, #c0392b);
+      }
+      
+      .ammo-fill {
+        background: linear-gradient(90deg, #f39c12, #e67e22);
+      }
+      
+      #controls {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: white;
+        font-size: 14px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #3498db;
+        pointer-events: none; /* Prevent UI from blocking game input */
+      }
+      
+      #score {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        color: white;
         font-size: 24px;
         font-weight: bold;
-        z-index: 2000;
-        transition: opacity 0.5s ease;
-      }
-
-      #loading h1 {
-        font-size: 48px;
-        margin-bottom: 20px;
-        text-shadow: 0 0 20px #ff0000;
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-      }
-
-      #loading .spinner {
-        width: 50px;
-        height: 50px;
-        border: 3px solid #333;
-        border-top: 3px solid #ff0000;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-top: 20px;
-      }
-
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #27ae60;
+        pointer-events: none; /* Prevent UI from blocking game input */
       }
     </style>
   </head>
   <body>
-    <div id="loading">
-      <h1>ZOMBIE SURVIVAL</h1>
-      <div>Loading apocalypse...</div>
-      <div class="spinner"></div>
+    <div id="game-container"></div>
+    
+    <div id="ui">
+      <div>Health: <span id="health">100</span>/100</div>
+      <div class="ui-bar">
+        <div class="ui-fill health-fill" id="health-bar" style="width: 100%;"></div>
+      </div>
+      <div>Ammo: <span id="ammo">30</span>/30</div>
+      <div class="ui-bar">
+        <div class="ui-fill ammo-fill" id="ammo-bar" style="width: 100%;"></div>
+      </div>
+      <div id="reload-status"></div>
     </div>
-    <canvas id="game-canvas"></canvas>
-    <script type="module" src="./src/main.js"></script>
+    
+    <div id="score">
+      <div>Score: <span id="score-value">0</span></div>
+      <div>Wave: <span id="wave">1</span></div>
+      <div>Zombies: <span id="zombies-left">5</span></div>
+    </div>
+    
+    <div id="controls">
+      <div><strong>Controls:</strong></div>
+      <div>WASD - Move</div>
+      <div>SPACE - Shoot</div>
+      <div>R - Reload</div>
+    </div>
+
+    <script src="node_modules/phaser/dist/phaser.min.js"></script>
+    <script type="module" src="src/main.js"></script>
   </body>
 </html> 

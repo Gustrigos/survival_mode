@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #2c3e50;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            border: 2px solid #fff;
+            margin: 20px auto;
+            display: block;
+        }
+        #console {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sprite Generation Test</h1>
+    <div id="game-container"></div>
+    <div id="console">
+        <div>Console output:</div>
+    </div>
+
+    <script>
+        // Capture console output
+        const consoleDiv = document.getElementById('console');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            consoleDiv.innerHTML += '<div style="color: #0f0;">' + args.join(' ') + '</div>';
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            consoleDiv.innerHTML += '<div style="color: #f00;">ERROR: ' + args.join(' ') + '</div>';
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        };
+        
+        console.log('Starting sprite test...');
+    </script>
+    
+    <script src="node_modules/phaser/dist/phaser.min.js"></script>
+    <script type="module">
+        import { SpriteGenerator } from './src/utils/SpriteGenerator.js';
+        
+        console.log('Phaser version:', Phaser.VERSION);
+        
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            backgroundColor: '#4a7c59',
+            scene: {
+                preload: function() {
+                    console.log('Preload called');
+                    SpriteGenerator.generateSprites(this);
+                },
+                create: function() {
+                    console.log('Create called');
+                    
+                    // Test background
+                    this.add.text(400, 50, 'Sprite Test', {
+                        fontSize: '32px',
+                        fill: '#ffffff'
+                    }).setOrigin(0.5);
+                    
+                    // Show all player sprites
+                    const directions = ['up', 'down', 'left', 'right'];
+                    directions.forEach((dir, index) => {
+                        const x = 150 + index * 150;
+                        const y = 150;
+                        
+                        if (this.textures.exists(`player_${dir}`)) {
+                            const sprite = this.add.image(x, y, `player_${dir}`);
+                            this.add.text(x, y + 50, `Player ${dir}`, {
+                                fontSize: '16px',
+                                fill: '#ffffff'
+                            }).setOrigin(0.5);
+                            console.log(`Player ${dir} sprite displayed at ${x}, ${y}`);
+                        } else {
+                            console.error(`Player ${dir} texture not found`);
+                        }
+                    });
+                    
+                    // Show zombie sprites
+                    directions.forEach((dir, index) => {
+                        const x = 150 + index * 150;
+                        const y = 300;
+                        
+                        if (this.textures.exists(`zombie_${dir}`)) {
+                            const sprite = this.add.image(x, y, `zombie_${dir}`);
+                            this.add.text(x, y + 50, `Zombie ${dir}`, {
+                                fontSize: '16px',
+                                fill: '#ffffff'
+                            }).setOrigin(0.5);
+                            console.log(`Zombie ${dir} sprite displayed at ${x}, ${y}`);
+                        } else {
+                            console.error(`Zombie ${dir} texture not found`);
+                        }
+                    });
+                    
+                    // Show bullet
+                    if (this.textures.exists('bullet')) {
+                        const bullet = this.add.image(400, 450, 'bullet');
+                        this.add.text(400, 480, 'Bullet', {
+                            fontSize: '16px',
+                            fill: '#ffffff'
+                        }).setOrigin(0.5);
+                        console.log('Bullet sprite displayed');
+                    } else {
+                        console.error('Bullet texture not found');
+                    }
+                    
+                    // List all available textures
+                    console.log('All available textures:', Object.keys(this.textures.list));
+                }
+            }
+        };
+        
+        const game = new Phaser.Game(config);
+        console.log('Game created:', game);
+    </script>
+</body>
+</html> 

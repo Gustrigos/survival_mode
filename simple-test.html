@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Phaser Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #2c3e50;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            border: 2px solid #fff;
+            margin: 20px auto;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Phaser Test</h1>
+    <div id="game-container"></div>
+
+    <script src="node_modules/phaser/dist/phaser.min.js"></script>
+    <script>
+        console.log('Phaser version:', Phaser.VERSION);
+        
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            backgroundColor: '#2c5530',
+            scene: {
+                preload: function() {
+                    console.log('Preload called');
+                },
+                create: function() {
+                    console.log('Create called');
+                    this.add.text(400, 300, 'Phaser is working!', {
+                        fontSize: '32px',
+                        fill: '#ffffff'
+                    }).setOrigin(0.5);
+                    
+                    this.add.rectangle(400, 400, 100, 100, 0xff0000);
+                }
+            }
+        };
+        
+        const game = new Phaser.Game(config);
+        console.log('Game created:', game);
+    </script>
+</body>
+</html> 
