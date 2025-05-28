@@ -23,6 +23,13 @@ export class GameScene extends Phaser.Scene {
         // Log available textures for debugging
         console.log('Available textures:', Object.keys(this.textures.list));
         
+        // Specifically check for helicopter texture
+        if (this.textures.exists('crashed_helicopter')) {
+            console.log('✓ Crashed helicopter texture exists and is ready');
+        } else {
+            console.error('✗ Crashed helicopter texture missing!');
+        }
+        
         // Check if specific textures exist
         const requiredTextures = ['player_down', 'player_up', 'player_left', 'player_right', 
                                  'zombie_down', 'zombie_up', 'zombie_left', 'zombie_right', 'bullet'];
@@ -38,7 +45,7 @@ export class GameScene extends Phaser.Scene {
     create() {
         console.log('GameScene create() called');
         
-        // Expand world bounds for larger farm area
+        // Expand world bounds for larger crash site area
         const worldWidth = 2048;
         const worldHeight = 1536;
         this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
@@ -55,7 +62,10 @@ export class GameScene extends Phaser.Scene {
             runChildUpdate: true
         });
         
-        this.structures = this.physics.add.group({
+        // Static structures (helicopter, buildings, wreckage, etc.) should live in a static physics group.
+        // Using a dynamic group for GameObjects that already have static bodies causes runtime errors
+        // when the group tries to apply dynamic-body callbacks. Switching to a static group fixes this.
+        this.structures = this.physics.add.staticGroup({
             classType: Structure,
             runChildUpdate: false
         });
@@ -63,20 +73,20 @@ export class GameScene extends Phaser.Scene {
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
         
-        // Create detailed farm background and structures
-        this.createFarmMap();
+        // Create detailed crash site background and structures
+        this.createCrashSiteMap();
         
-        // Create player in farmyard area
+        // Create player in crash site area
         console.log('Creating player...');
         try {
             // Check if player textures exist
             if (this.textures.exists('player_down')) {
-                this.player = new Player(this, 400, 600); // Start near farmhouse
+                this.player = new Player(this, 900, 650); // Start closer to helicopter crash site
                 console.log('Player created successfully with textures');
             } else {
                 console.warn('Player textures not found, creating fallback player');
                 // Create a simple colored rectangle as player
-                this.player = this.add.rectangle(400, 600, 48, 64, 0x00ff00);
+                this.player = this.add.rectangle(900, 650, 48, 64, 0x00ff00);
                 this.player.setDepth(1000);
                 
                 // Add basic physics
@@ -120,7 +130,7 @@ export class GameScene extends Phaser.Scene {
         } catch (error) {
             console.error('Error creating player:', error);
             // Create a simple placeholder if player creation fails
-            this.player = this.add.rectangle(400, 600, 64, 64, 0x00ff00);
+            this.player = this.add.rectangle(900, 650, 64, 64, 0x00ff00);
             this.player.setDepth(1000);
             this.physics.add.existing(this.player);
             this.player.body.setCollideWorldBounds(true);
@@ -146,7 +156,7 @@ export class GameScene extends Phaser.Scene {
         
         // Input
         this.cursors = this.input.keyboard.createCursorKeys();
-        this.wasd = this.input.keyboard.addKeys('W,S,A,D,SPACE,R');
+        this.wasd = this.input.keyboard.addKeys('W,S,A,D,SPACE,R,E');
         
         // Set up collisions
         this.setupCollisions();
@@ -185,28 +195,28 @@ export class GameScene extends Phaser.Scene {
         this.updateDebugText();
     }
 
-    createFarmMap() {
-        console.log('Creating detailed farm map...');
+    createCrashSiteMap() {
+        console.log('Creating helicopter crash site map...');
         
         try {
             // Create base terrain
             this.createTerrain();
             
-            // Create farm structures
-            this.createFarmStructures();
+            // Create crash site structures
+            this.createCrashSiteStructures();
             
-            // Create fencing and barriers
-            this.createFencing();
+            // Create urban barriers and defenses
+            this.createUrbanBarriers();
             
-            // Create vegetation and crops
-            this.createVegetation();
+            // Create sparse vegetation
+            this.createUrbanVegetation();
             
-            // Create paths and roads
+            // Create roads and paths
             this.createPaths();
             
-            console.log('Farm map created successfully');
+            console.log('Helicopter crash site map created successfully');
         } catch (error) {
-            console.error('Error creating farm map, using fallback:', error);
+            console.error('Error creating crash site map, using fallback:', error);
             this.createFallbackBackground();
         }
     }
@@ -214,33 +224,34 @@ export class GameScene extends Phaser.Scene {
     createFallbackBackground() {
         console.log('Creating fallback background...');
         
-        // Create simple grass background
+        // Create simple sandy background
         const worldWidth = 2048;
         const worldHeight = 1536;
         const tileSize = 64;
         
         for (let x = 0; x < worldWidth; x += tileSize) {
             for (let y = 0; y < worldHeight; y += tileSize) {
-                const tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, 0x4a7c59);
+                const tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, 0xF4E4BC);
                 tile.setDepth(-10);
             }
         }
         
         // Add some simple structures for gameplay
-        const farmhouse = this.add.rectangle(400, 500, 128, 96, 0x8B4513);
-        farmhouse.setDepth(500);
-        this.physics.add.existing(farmhouse, true);
-        farmhouse.body.setImmovable(true);
+        const crashedHelicopter = this.add.rectangle(1000, 750, 240, 160, 0x2F4F4F);
+        crashedHelicopter.setDepth(750);
+        this.physics.add.existing(crashedHelicopter, true);
+        crashedHelicopter.body.setImmovable(true);
+        crashedHelicopter.body.setSize(200, 120); // Match the collision box from Structure.js
         
-        const barn = this.add.rectangle(800, 400, 160, 120, 0xB22222);
-        barn.setDepth(400);
-        this.physics.add.existing(barn, true);
-        barn.body.setImmovable(true);
+        const building = this.add.rectangle(400, 500, 128, 96, 0xC0C0C0);
+        building.setDepth(500);
+        this.physics.add.existing(building, true);
+        building.body.setImmovable(true);
         
         // Add collision for player
         if (this.player && this.player.body) {
-            this.physics.add.collider(this.player, farmhouse);
-            this.physics.add.collider(this.player, barn);
+            this.physics.add.collider(this.player, crashedHelicopter);
+            this.physics.add.collider(this.player, building);
         }
         
         console.log('Fallback background created');
@@ -251,25 +262,29 @@ export class GameScene extends Phaser.Scene {
         const worldWidth = 2048;
         const worldHeight = 1536;
         
-        console.log('Creating terrain...');
+        console.log('Creating Somalia-style terrain...');
         
         // Create varied terrain base
         for (let x = 0; x < worldWidth; x += tileSize) {
             for (let y = 0; y < worldHeight; y += tileSize) {
-                let terrainType = 'grass_texture';
+                let terrainType = 'sand_texture';
                 
-                // Farmyard area (around farmhouse)
-                if (x >= 256 && x <= 640 && y >= 448 && y <= 768) {
-                    terrainType = 'farmyard';
+                // Crash site area (center of map)
+                if (x >= 800 && x <= 1200 && y >= 600 && y <= 900) {
+                    terrainType = 'rubble';
                 }
-                // Crop fields
-                else if (x >= 768 && x <= 1280 && y >= 256 && y <= 640) {
-                    terrainType = Math.random() > 0.5 ? 'crop_field' : 'corn_field';
+                // Urban areas with concrete
+                else if (x >= 256 && x <= 640 && y >= 448 && y <= 768) {
+                    terrainType = 'crackled_concrete';
                 }
-                // Dirt paths
-                else if ((x >= 320 && x <= 384 && y >= 0 && y <= worldHeight) || // Main vertical path
-                         (x >= 0 && x <= worldWidth && y >= 576 && y <= 640)) { // Main horizontal path
-                    terrainType = 'dirt_path';
+                // Main roads
+                else if ((x >= 320 && x <= 384 && y >= 0 && y <= worldHeight) || // Main vertical road
+                         (x >= 0 && x <= worldWidth && y >= 576 && y <= 640)) { // Main horizontal road
+                    terrainType = 'dirt_road';
+                }
+                // Random rubble patches (reduced for clarity)
+                else if (Math.random() < 0.03) { // 3% chance instead of 15%
+                    terrainType = 'rubble';
                 }
                 
                 // Check if texture exists, fallback to simple colored rectangle
@@ -279,11 +294,10 @@ export class GameScene extends Phaser.Scene {
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
                     // Create fallback colored rectangles
-                    let color = 0x4a7c59; // Default grass green
-                    if (terrainType === 'farmyard') color = 0x8B7355; // Brown
-                    else if (terrainType === 'crop_field') color = 0x228B22; // Green
-                    else if (terrainType === 'corn_field') color = 0x32CD32; // Lime green
-                    else if (terrainType === 'dirt_path') color = 0x8B7355; // Light brown
+                    let color = 0xF4E4BC; // Default sand color
+                    if (terrainType === 'rubble') color = 0x8B7355; // Brown rubble
+                    else if (terrainType === 'crackled_concrete') color = 0xB0B0B0; // Gray concrete
+                    else if (terrainType === 'dirt_road') color = 0xA0956F; // Dusty brown
                     
                     tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, color);
                 }
@@ -291,86 +305,167 @@ export class GameScene extends Phaser.Scene {
             }
         }
         
-        console.log('Terrain created successfully');
+        console.log('Somalia-style terrain created successfully');
     }
     
-    createFarmStructures() {
-        console.log('Creating farm structures...');
+    createCrashSiteStructures() {
+        console.log('Creating crash site structures...');
         
         try {
-            // Main farmhouse (player's base)
-            const farmhouse = this.createStructureWithFallback(400, 500, 'farmhouse', {
-                type: 'farmhouse',
-                material: 'wood',
-                health: 500,
-                destructible: true
-            }, 0x8B4513, 128, 96);
-            
-            // Large red barn
-            const barn = this.createStructureWithFallback(800, 400, 'barn', {
-                type: 'barn',
-                material: 'wood',
-                health: 800,
-                destructible: true
-            }, 0xB22222, 160, 120);
-            
-            // Grain silo
-            const silo = this.createStructureWithFallback(1000, 350, 'silo', {
-                type: 'silo',
+            // Main crashed helicopter at center
+            const helicopter = this.createStructureWithFallback(1000, 750, 'crashed_helicopter', {
+                type: 'crashed_helicopter',
                 material: 'metal',
-                health: 1000,
+                health: 1500,
                 destructible: false
-            }, 0xC0C0C0, 48, 120);
+            }, 0x2F4F4F, 240, 160);
             
-            // Water well
-            const well = this.createStructureWithFallback(600, 650, 'well', {
-                type: 'well',
-                material: 'stone',
-                health: 400,
-                destructible: false
-            }, 0x696969, 64, 64);
+            // >>> NEW: enlarge the fuselage and adjust its collision box
+            const heliScale = 2; // make helicopter huge – fits ~6 players horizontally
+            helicopter.setScale(heliScale);
+            if (helicopter.body && helicopter.body.setSize) {
+                helicopter.body.setSize(200 * heliScale, 120 * heliScale);
+                helicopter.body.setOffset(20 * heliScale, 20 * heliScale);
+            }
             
-            // Old tractor
-            const tractor = this.createStructureWithFallback(700, 550, 'tractor', {
-                type: 'tractor',
+            // >>> NEW: detached tail section using the existing helicopter_wreckage texture
+            const tail = this.createStructureWithFallback(1130, 780, 'helicopter_wreckage', {
+                type: 'helicopter_tail',
                 material: 'metal',
-                health: 300,
+                health: 200,
                 destructible: true
-            }, 0x228B22, 96, 64);
+            }, 0x2F4F4F, 80, 60);
+            // Add a slight rotation for realism
+            if (tail.setRotation) tail.setRotation(0.4);
             
-            // Scattered wooden crates
+            // Extra smoke & flame effects near both parts
+            this.addHelicopterEffects(tail.x, tail.y);
+            
+            // Add a bright marker above the helicopter to help locate it
+            const helicopterMarker = this.add.circle(1000, 650, 20, 0xff0000, 0.8);
+            helicopterMarker.setDepth(2000);
+            helicopterMarker.setStrokeStyle(4, 0xffffff);
+            
+            // Add pulsing animation to the marker
+            this.tweens.add({
+                targets: helicopterMarker,
+                scaleX: 1.5,
+                scaleY: 1.5,
+                alpha: 0.3,
+                duration: 1000,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+            
+            // Add text label
+            const helicopterLabel = this.add.text(1000, 620, 'HELICOPTER', {
+                fontSize: '16px',
+                fill: '#ffffff',
+                fontFamily: 'Courier New',
+                stroke: '#000000',
+                strokeThickness: 2
+            }).setOrigin(0.5).setDepth(2001);
+            
+            console.log('Helicopter marker added at position 1000, 750');
+            
+            // Burning wreckage around crash site
+            const burningPositions = [
+                {x: 900, y: 700}, {x: 1100, y: 800}, {x: 950, y: 850}
+            ];
+            
+            burningPositions.forEach(pos => {
+                const wreck = this.createStructureWithFallback(pos.x, pos.y, 'burning_wreckage', {
+                    type: 'burning_wreckage',
+                    material: 'metal',
+                    health: 200,
+                    destructible: true
+                }, 0x2F4F4F, 64, 48);
+
+                // Add pulsating fire effect to give life to the flames
+                this.tweens.add({
+                    targets: wreck,
+                    scaleX: { from: 0.9, to: 1.05 },
+                    scaleY: { from: 0.9, to: 1.05 },
+                    alpha: { from: 0.8, to: 1 },
+                    yoyo: true,
+                    repeat: -1,
+                    duration: Phaser.Math.Between(500, 800)
+                });
+
+                // Extra smoke from each burning wreckage
+                this.addHelicopterEffects(pos.x, pos.y);
+            });
+            
+            // Helicopter wreckage pieces
+            const wreckagePositions = [
+                {x: 850, y: 650}, {x: 1150, y: 700}, {x: 1050, y: 900}, {x: 800, y: 800}
+            ];
+            
+            wreckagePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'helicopter_wreckage', {
+                    type: 'helicopter_wreckage',
+                    material: 'metal',
+                    health: 100,
+                    destructible: true
+                }, 0x2F4F4F, 80, 60);
+            });
+            
+            // Somalia-style concrete buildings
+            const buildingPositions = [
+                {x: 400, y: 500, texture: 'concrete_building'},
+                {x: 600, y: 400, texture: 'damaged_building'},
+                {x: 1400, y: 600, texture: 'concrete_building'},
+                {x: 1600, y: 800, texture: 'damaged_building'}
+            ];
+            
+            buildingPositions.forEach(pos => {
+                const width = pos.texture === 'concrete_building' ? 128 : 96;
+                const height = pos.texture === 'concrete_building' ? 96 : 80;
+                this.createStructureWithFallback(pos.x, pos.y, pos.texture, {
+                    type: pos.texture,
+                    material: 'concrete',
+                    health: 1200,
+                    destructible: true
+                }, 0xC0C0C0, width, height);
+            });
+            
+            // Military supply crates
             const cratePositions = [
                 {x: 450, y: 650}, {x: 520, y: 680}, {x: 380, y: 720},
-                {x: 850, y: 500}, {x: 900, y: 520}, {x: 750, y: 480}
+                {x: 1300, y: 500}, {x: 1350, y: 520}, {x: 1250, y: 480}
             ];
             
             cratePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'wooden_crate', {
-                    type: 'wooden_crate',
-                    material: 'wood',
-                    health: 50,
+                this.createStructureWithFallback(pos.x, pos.y, 'military_crate', {
+                    type: 'military_crate',
+                    material: 'metal',
+                    health: 100,
                     destructible: true
-                }, 0xD2691E, 32, 32);
+                }, 0x4A5D23, 32, 32);
             });
             
-            // Hay bales
-            const hayPositions = [
-                {x: 550, y: 750}, {x: 620, y: 780}, {x: 480, y: 800},
-                {x: 950, y: 450}, {x: 1020, y: 480}
+            // Debris piles
+            const debrisPositions = [
+                {x: 750, y: 750}, {x: 1200, y: 650}, {x: 900, y: 950},
+                {x: 1100, y: 600}, {x: 850, y: 900}
             ];
             
-            hayPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'hay_bale', {
-                    type: 'hay_bale',
-                    material: 'wood',
-                    health: 75,
+            debrisPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'debris', {
+                    type: 'debris',
+                    material: 'concrete',
+                    health: 50,
                     destructible: true
-                }, 0xDAA520, 48, 32);
+                }, 0x696969, 32, 24);
             });
             
-            console.log('Farm structures created successfully');
+            // Restore smoke / fire effects for the larger helicopter body
+            this.addHelicopterEffects(1000, 750);
+            
+            console.log('Crash site structures created successfully');
         } catch (error) {
-            console.error('Error creating farm structures:', error);
+            console.error('Error creating crash site structures:', error);
         }
     }
     
@@ -402,139 +497,119 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    createFencing() {
-        console.log('Creating fencing...');
+    createUrbanBarriers() {
+        console.log('Creating urban barriers...');
         
         try {
-            // Perimeter wooden fence around farmyard
-            const fencePositions = [
-                // Top fence line
-                {x: 256, y: 448}, {x: 320, y: 448}, {x: 384, y: 448}, {x: 448, y: 448}, 
-                {x: 512, y: 448}, {x: 576, y: 448}, {x: 640, y: 448},
+            // Compound walls around buildings
+            const wallPositions = [
+                // Around first building
+                {x: 320, y: 448}, {x: 384, y: 448}, {x: 448, y: 448},
+                {x: 320, y: 512}, {x: 320, y: 576}, {x: 448, y: 512}, {x: 448, y: 576},
+                {x: 320, y: 640}, {x: 384, y: 640}, {x: 448, y: 640},
                 
-                // Bottom fence line
-                {x: 256, y: 768}, {x: 320, y: 768}, {x: 384, y: 768}, {x: 448, y: 768}, 
-                {x: 512, y: 768}, {x: 576, y: 768}, {x: 640, y: 768},
-                
-                // Left fence line
-                {x: 256, y: 512}, {x: 256, y: 576}, {x: 256, y: 640}, {x: 256, y: 704},
-                
-                // Right fence line
-                {x: 640, y: 512}, {x: 640, y: 576}, {x: 640, y: 640}, {x: 640, y: 704}
+                // Around crash site perimeter
+                {x: 700, y: 600}, {x: 764, y: 600}, {x: 828, y: 600},
+                {x: 1200, y: 600}, {x: 1264, y: 600}, {x: 1328, y: 600},
+                {x: 700, y: 900}, {x: 764, y: 900}, {x: 828, y: 900},
+                {x: 1200, y: 900}, {x: 1264, y: 900}, {x: 1328, y: 900}
             ];
             
-            fencePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'wooden_fence', {
-                    type: 'wooden_fence',
+            wallPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'compound_wall', {
+                    type: 'compound_wall',
+                    material: 'concrete',
+                    health: 300,
+                    destructible: true
+                }, 0xA0A0A0, 64, 32);
+            });
+            
+            // Sandbag positions for defensive positions
+            const sandbagPositions = [
+                {x: 500, y: 600}, {x: 550, y: 650}, {x: 600, y: 700},
+                {x: 1400, y: 700}, {x: 1450, y: 750}, {x: 1500, y: 800}
+            ];
+            
+            sandbagPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'sandbags', {
+                    type: 'sandbags',
+                    material: 'fabric',
+                    health: 150,
+                    destructible: true
+                }, 0xC2B280, 48, 32);
+            });
+            
+            // Barricades at key positions
+            const barricadePositions = [
+                {x: 352, y: 500}, {x: 352, y: 700}, {x: 1000, y: 500}, {x: 1000, y: 1000}
+            ];
+            
+            barricadePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'barricade', {
+                    type: 'barricade',
                     material: 'wood',
                     health: 80,
                     destructible: true
-                }, 0x8B4513, 64, 32);
+                }, 0x8B4513, 64, 24);
             });
             
-            // Gate entrance
-            this.createStructureWithFallback(352, 768, 'gate', {
-                type: 'gate',
-                material: 'wood',
-                health: 60,
-                destructible: true
-            }, 0x8B4513, 64, 32);
-            
-            // Stone fence around crop fields
-            const stoneFencePositions = [
-                {x: 768, y: 256}, {x: 832, y: 256}, {x: 896, y: 256}, {x: 960, y: 256},
-                {x: 1024, y: 256}, {x: 1088, y: 256}, {x: 1152, y: 256}, {x: 1216, y: 256}, {x: 1280, y: 256},
-                
-                {x: 768, y: 640}, {x: 832, y: 640}, {x: 896, y: 640}, {x: 960, y: 640},
-                {x: 1024, y: 640}, {x: 1088, y: 640}, {x: 1152, y: 640}, {x: 1216, y: 640}, {x: 1280, y: 640}
-            ];
-            
-            stoneFencePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'stone_fence', {
-                    type: 'stone_fence',
-                    material: 'stone',
-                    health: 200,
-                    destructible: false
-                }, 0x696969, 64, 24);
-            });
-            
-            console.log('Fencing created successfully');
+            console.log('Urban barriers created successfully');
         } catch (error) {
-            console.error('Error creating fencing:', error);
+            console.error('Error creating urban barriers:', error);
         }
     }
     
-    createVegetation() {
-        console.log('Creating vegetation...');
+    createUrbanVegetation() {
+        console.log('Creating sparse urban vegetation...');
         
         try {
-            // Large oak trees for cover and atmosphere
-            const oakPositions = [
-                {x: 150, y: 200}, {x: 300, y: 150}, {x: 1800, y: 300},
-                {x: 1900, y: 800}, {x: 200, y: 1200}, {x: 1700, y: 1300}
+            // Sparse palm trees
+            const palmPositions = [
+                {x: 200, y: 300}, {x: 1800, y: 400}, {x: 300, y: 1200}, {x: 1700, y: 1100}
             ];
             
-            oakPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'oak_tree', {
-                    type: 'oak_tree',
+            palmPositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'palm_tree', {
+                    type: 'palm_tree',
                     material: 'wood',
-                    health: 150,
+                    health: 120,
                     destructible: true
-                }, 0x228B22, 80, 96);
+                }, 0x8B7355, 48, 80);
             });
             
-            // Apple orchard
-            const applePositions = [
-                {x: 1400, y: 400}, {x: 1500, y: 380}, {x: 1600, y: 420},
-                {x: 1450, y: 500}, {x: 1550, y: 480}, {x: 1650, y: 520},
-                {x: 1400, y: 600}, {x: 1500, y: 580}, {x: 1600, y: 620}
+            // Dead trees
+            const deadTreePositions = [
+                {x: 150, y: 800}, {x: 1900, y: 600}, {x: 400, y: 1300}
             ];
             
-            applePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'apple_tree', {
-                    type: 'apple_tree',
+            deadTreePositions.forEach(pos => {
+                this.createStructureWithFallback(pos.x, pos.y, 'dead_tree', {
+                    type: 'dead_tree',
                     material: 'wood',
-                    health: 100,
+                    health: 60,
                     destructible: true
-                }, 0x32CD32, 64, 80);
+                }, 0x654321, 32, 64);
             });
             
-            // Decorative bushes (non-collidable)
+            // Scrub bushes (non-collidable decoration)
             const bushPositions = [
-                {x: 180, y: 400}, {x: 220, y: 450}, {x: 160, y: 500},
-                {x: 1800, y: 600}, {x: 1850, y: 650}, {x: 1750, y: 700},
-                {x: 400, y: 1200}, {x: 450, y: 1250}, {x: 350, y: 1300}
+                {x: 180, y: 400}, {x: 220, y: 450}, {x: 1800, y: 650},
+                {x: 1850, y: 700}, {x: 350, y: 1250}
             ];
             
             bushPositions.forEach(pos => {
-                if (this.textures.exists('bush')) {
-                    const bush = this.add.image(pos.x, pos.y, 'bush');
+                if (this.textures.exists('scrub_bush')) {
+                    const bush = this.add.image(pos.x, pos.y, 'scrub_bush');
                     bush.setDepth(pos.y);
                 } else {
-                    const bush = this.add.circle(pos.x, pos.y, 16, 0x228B22);
+                    const bush = this.add.circle(pos.x, pos.y, 12, 0x6B8E23);
                     bush.setDepth(pos.y);
                 }
             });
             
-            // Flower patches for decoration
-            const flowerPositions = [
-                {x: 500, y: 400}, {x: 550, y: 420}, {x: 480, y: 380},
-                {x: 1200, y: 800}, {x: 1250, y: 820}, {x: 1180, y: 780}
-            ];
-            
-            flowerPositions.forEach(pos => {
-                if (this.textures.exists('flowers')) {
-                    const flowers = this.add.image(pos.x, pos.y, 'flowers');
-                    flowers.setDepth(pos.y - 5);
-                } else {
-                    const flowers = this.add.circle(pos.x, pos.y, 8, 0xFF69B4);
-                    flowers.setDepth(pos.y - 5);
-                }
-            });
-            
-            console.log('Vegetation created successfully');
+            console.log('Urban vegetation created successfully');
         } catch (error) {
-            console.error('Error creating vegetation:', error);
+            console.error('Error creating urban vegetation:', error);
         }
     }
     
@@ -557,6 +632,9 @@ export class GameScene extends Phaser.Scene {
     update(time, delta) {
         // Update player
         this.player.update(time, delta);
+        
+        // Update crash site structures (if any have special behavior)
+        // Currently no special updates needed for crash site structures
         
         // Handle input
         this.handleInput();
@@ -620,6 +698,12 @@ export class GameScene extends Phaser.Scene {
         // Reloading
         if (Phaser.Input.Keyboard.JustDown(this.wasd.R)) {
             this.player.reload();
+        }
+        
+        // Structure interaction (for future features like entering buildings)
+        if (Phaser.Input.Keyboard.JustDown(this.wasd.E)) {
+            // Future: Add interaction with crash site structures
+            // Could include searching wreckage, entering buildings, etc.
         }
     }
     
@@ -1014,5 +1098,58 @@ export class GameScene extends Phaser.Scene {
             const weaponName = this.player.getCurrentWeaponName();
             this.weaponNameText.setText(weaponName.charAt(0).toUpperCase() + weaponName.slice(1));
         }
+    }
+
+    addHelicopterEffects(x, y) {
+        // Positions relative to helicopter center for smoke puffs (engine & tail)
+        const smokeOffsets = [
+            { dx: 50, dy: -30 }, // Engine top
+            { dx: -60, dy: -20 } // Cockpit top-left
+        ];
+        
+        smokeOffsets.forEach(offset => {
+            this.time.addEvent({
+                delay: Phaser.Math.Between(600, 1200),
+                loop: true,
+                callback: () => {
+                    const puff = this.add.image(x + offset.dx, y + offset.dy, 'smoke_puff');
+                    puff.setDepth(y);
+                    const startScale = Phaser.Math.FloatBetween(0.8, 1.2);
+                    puff.setScale(startScale);
+                    puff.setAlpha(0.7);
+                    this.tweens.add({
+                        targets: puff,
+                        y: puff.y - 40,
+                        scaleX: startScale * 1.6,
+                        scaleY: startScale * 1.6,
+                        alpha: 0,
+                        duration: 3000,
+                        ease: 'Sine.easeOut',
+                        onComplete: () => puff.destroy()
+                    });
+                }
+            });
+        });
+        
+        // Static small fires on wreckage
+        const fireOffsets = [
+            { dx: -20, dy: 30 },
+            { dx: 40, dy: 25 }
+        ];
+        fireOffsets.forEach(offset => {
+            const flame = this.add.image(x + offset.dx, y + offset.dy, 'small_fire');
+            flame.setDepth(y);
+            flame.setAlpha(0.9);
+            // Flicker animation
+            this.tweens.add({
+                targets: flame,
+                scaleX: { from: 0.9, to: 1.1 },
+                scaleY: { from: 0.9, to: 1.1 },
+                alpha: { from: 0.7, to: 1 },
+                yoyo: true,
+                repeat: -1,
+                duration: Phaser.Math.Between(200, 350)
+            });
+        });
     }
 } 

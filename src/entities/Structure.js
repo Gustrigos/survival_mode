@@ -57,8 +57,8 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
             this.body.setOffset(bodyConfig.offsetX, bodyConfig.offsetY);
         }
         
-        // Make immovable
-        this.body.setImmovable(true);
+        // Static bodies are immovable by default, no need to set
+        // this.body.setImmovable(true); // Not needed for static bodies
         
         // Set collision category for different materials
         this.body.customData = {
@@ -70,29 +70,29 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     
     getBodyConfig() {
         switch (this.structureType) {
-            case 'farmhouse':
-                return { width: 100, height: 60, offsetX: 14, offsetY: 36 };
-            case 'barn':
-                return { width: 140, height: 70, offsetX: 10, offsetY: 50 };
-            case 'silo':
-                return { width: 40, height: 100, offsetX: 4, offsetY: 20 };
-            case 'well':
-                return { width: 50, height: 50, offsetX: 7, offsetY: 7 };
-            case 'tractor':
-                return { width: 80, height: 50, offsetX: 8, offsetY: 14 };
-            case 'wooden_fence':
-                return { width: 64, height: 16, offsetX: 0, offsetY: 16 };
-            case 'stone_fence':
-                return { width: 64, height: 16, offsetX: 0, offsetY: 8 };
-            case 'gate':
-                return { width: 64, height: 16, offsetX: 0, offsetY: 16 };
-            case 'wooden_crate':
+            case 'crashed_helicopter':
+                return { width: 200, height: 120, offsetX: 20, offsetY: 20 };
+            case 'helicopter_wreckage':
+                return { width: 70, height: 50, offsetX: 5, offsetY: 10 };
+            case 'burning_wreckage':
+                return { width: 55, height: 40, offsetX: 4, offsetY: 8 };
+            case 'concrete_building':
+                return { width: 110, height: 70, offsetX: 9, offsetY: 26 };
+            case 'damaged_building':
+                return { width: 85, height: 60, offsetX: 5, offsetY: 20 };
+            case 'compound_wall':
+                return { width: 60, height: 20, offsetX: 2, offsetY: 12 };
+            case 'military_crate':
                 return { width: 28, height: 28, offsetX: 2, offsetY: 2 };
-            case 'hay_bale':
+            case 'sandbags':
                 return { width: 44, height: 20, offsetX: 2, offsetY: 12 };
-            case 'apple_tree':
+            case 'barricade':
+                return { width: 60, height: 16, offsetX: 2, offsetY: 16 };
+            case 'debris':
+                return { width: 28, height: 20, offsetX: 2, offsetY: 2 };
+            case 'palm_tree':
                 return { width: 20, height: 20, offsetX: 22, offsetY: 60 };
-            case 'oak_tree':
+            case 'dead_tree':
                 return { width: 24, height: 24, offsetX: 28, offsetY: 72 };
             default:
                 return { width: this.width * 0.8, height: this.height * 0.8, offsetX: this.width * 0.1, offsetY: this.height * 0.1 };
@@ -169,8 +169,10 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
         });
         
         // Screen shake for large structures
-        if (this.structureType === 'farmhouse' || this.structureType === 'barn') {
-            this.scene.cameras.main.shake(150, 0.005);
+        if (this.structureType === 'crashed_helicopter' || this.structureType === 'concrete_building') {
+            if (this.scene && this.scene.cameras && this.scene.cameras.main) {
+                this.scene.cameras.main.shake(150, 0.005);
+            }
         }
     }
     
@@ -281,7 +283,9 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
         });
         
         // Screen shake for destruction
-        this.scene.cameras.main.shake(300, 0.01);
+        if (this.scene && this.scene.cameras && this.scene.cameras.main) {
+            this.scene.cameras.main.shake(300, 0.01);
+        }
     }
     
     // Method for zombies to attack structures
@@ -301,9 +305,9 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     
     // Check if structure blocks line of sight
     blocksLineOfSight() {
-        return this.structureType === 'farmhouse' || 
-               this.structureType === 'barn' || 
-               this.structureType === 'silo' ||
-               this.structureType === 'oak_tree';
+        return this.structureType === 'crashed_helicopter' || 
+               this.structureType === 'concrete_building' || 
+               this.structureType === 'damaged_building' ||
+               this.structureType === 'dead_tree';
     }
 } 
