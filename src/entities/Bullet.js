@@ -35,32 +35,34 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         this.body.enable = true; // Enable physics for collision detection
         this.startTime = this.scene.time.now;
         
-        // Simple trail effect
-        this.createSimpleTrail();
-    }
-    
-    createSimpleTrail() {
-        // Simple trail effect using a basic sprite instead of particles
-        if (this.trailSprite) {
-            this.trailSprite.destroy();
+        // Orient the bullet sprite based on direction of travel (default sprite faces left)
+        let angleDeg = 0;
+        if (Math.abs(velocityX) > Math.abs(velocityY)) {
+            // Horizontal shot
+            angleDeg = velocityX > 0 ? 180 : 0; // Right needs flip (180°), left is default (0°)
+        } else {
+            // Vertical shot (invert north/south per feedback)
+            angleDeg = velocityY > 0 ? -90 : 90; // Down -90°, Up 90°
+        }
+        this.setAngle(angleDeg);
+        
+        // Scale bullet to roughly 1/10 of player's scale for a much smaller appearance
+        if (this.scene.player) {
+            const desiredScale = this.scene.player.scaleX * 0.1; // 10x smaller
+            this.setScale(desiredScale);
         }
         
-        this.trailSprite = this.scene.add.image(this.x, this.y, 'bullet');
-        this.trailSprite.setScale(0.5);
-        this.trailSprite.setAlpha(0.5);
-        this.trailSprite.setDepth(this.depth - 1);
+        // After scaling, give the bullet a slightly larger invisible hitbox (6x6) centered on the sprite
+        this.body.setSize(6, 6);
+        this.body.setOffset(-3, -3); // Center hit-box around the sprite's origin
         
-        // Fade out trail
+        // Make bullet semi-transparent and fade quickly for fast-moving effect
+        this.setAlpha(0.6);
         this.scene.tweens.add({
-            targets: this.trailSprite,
+            targets: this,
             alpha: 0,
-            duration: 300,
-            onComplete: () => {
-                if (this.trailSprite) {
-                    this.trailSprite.destroy();
-                    this.trailSprite = null;
-                }
-            }
+            duration: this.lifespan * 0.4,
+            ease: 'Linear'
         });
     }
     
@@ -81,7 +83,8 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     }
     
     deactivate() {
-        // Clean up trail effect
+        // Restore alpha and clean any lingering trail sprite (if previously created)
+        this.setAlpha(1);
         if (this.trailSprite) {
             this.trailSprite.destroy();
             this.trailSprite = null;
