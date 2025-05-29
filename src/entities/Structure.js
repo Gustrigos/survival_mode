@@ -29,6 +29,19 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
         // Set depth for proper layering
         this.setDepth(this.y + this.height);
         
+        // Visual highlight to indicate collidable structure (filled + thick outline)
+        this.highlight = scene.add.rectangle(
+            this.x,
+            this.y,
+            this.displayWidth,
+            this.displayHeight,
+            0xffff00,
+            0.25 // 25% opacity fill
+        );
+        this.highlight.setOrigin(this.originX, this.originY);
+        this.highlight.setStrokeStyle(4, 0xff00ff, 0.95); // thick magenta border
+        this.highlight.setDepth(this.depth + 1);
+        
         console.log(`Created ${this.structureType} structure at ${x}, ${y} with ${this.health} health`);
     }
     
@@ -222,6 +235,10 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     destroy() {
         console.log(`${this.structureType} destroyed!`);
         
+        if (this.highlight) {
+            this.highlight.destroy();
+        }
+        
         // Create destruction effect
         this.createDestructionEffect();
         
@@ -235,6 +252,7 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     }
     
     createDestructionEffect() {
+        if(!this.scene) return;
         // Large debris explosion
         const debrisCount = 15;
         

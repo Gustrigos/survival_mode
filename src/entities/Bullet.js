@@ -13,12 +13,15 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         this.lifespan = 2000; // 2 seconds
         this.startTime = 0;
         
-        // Set up physics body
-        this.body.setSize(12, 12); // Larger collision box for larger sprite
+        // Set up physics body - slightly larger for more forgiving collisions
+        this.body.setSize(12, 12);
         
         // Start inactive
         this.setActive(false);
         this.setVisible(false);
+        
+        // Disable physics body until fired to prevent stray collisions
+        this.body.enable = false;
         
         console.log('Bullet created with texture:', this.texture.key);
     }
@@ -29,6 +32,7 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         this.setVelocity(velocityX, velocityY);
         this.setActive(true);
         this.setVisible(true);
+        this.body.enable = true; // Enable physics for collision detection
         this.startTime = this.scene.time.now;
         
         // Simple trail effect
@@ -86,7 +90,10 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         // Reset bullet for reuse
         this.setActive(false);
         this.setVisible(false);
-        this.setVelocity(0, 0);
+        if (this.body) {
+            this.setVelocity(0, 0);
+            this.body.enable = false; // Disable physics while inactive
+        }
     }
     
     destroy() {

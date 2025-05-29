@@ -3,6 +3,7 @@ import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
+import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -12,25 +13,31 @@ export class GameScene extends Phaser.Scene {
     preload() {
         console.log('GameScene preload() called');
         
-        // Generate sprites using canvas
+        // Load sprites (this queues them for loading)
         try {
             SpriteGenerator.generateSprites(this);
-            console.log('Sprites generated successfully');
+            console.log('Sprites queued for loading successfully');
         } catch (error) {
-            console.error('Error generating sprites:', error);
+            console.error('Error loading sprites:', error);
         }
+    }
+
+    create() {
+        console.log('GameScene create() called');
         
-        // Log available textures for debugging
+        // NOW check for loaded textures - they're actually available now
         console.log('Available textures:', Object.keys(this.textures.list));
         
-        // Specifically check for helicopter texture
-        if (this.textures.exists('crashed_helicopter')) {
-            console.log('✓ Crashed helicopter texture exists and is ready');
+        // Check for SWAT spritesheet first
+        if (this.textures.exists('swat_player')) {
+            console.log('✓ SWAT spritesheet loaded successfully');
+            // Set up SWAT animations
+            SWATSpriteManager.setupAnimations(this);
         } else {
-            console.error('✗ Crashed helicopter texture missing!');
+            console.warn('✗ SWAT spritesheet not found, will use placeholder sprites');
         }
         
-        // Check if specific textures exist
+        // Check for other required textures
         const requiredTextures = ['player_down', 'player_up', 'player_left', 'player_right', 
                                  'zombie_down', 'zombie_up', 'zombie_left', 'zombie_right', 'bullet'];
         requiredTextures.forEach(texture => {
@@ -40,10 +47,13 @@ export class GameScene extends Phaser.Scene {
                 console.error(`✗ Texture '${texture}' missing!`);
             }
         });
-    }
-
-    create() {
-        console.log('GameScene create() called');
+        
+        // Specifically check for helicopter texture
+        if (this.textures.exists('crashed_helicopter')) {
+            console.log('✓ Crashed helicopter texture exists and is ready');
+        } else {
+            console.error('✗ Crashed helicopter texture missing!');
+        }
         
         // Expand world bounds for larger crash site area
         const worldWidth = 2048;
@@ -79,44 +89,15 @@ export class GameScene extends Phaser.Scene {
         // Create player in crash site area
         console.log('Creating player...');
         try {
-            // Check if player textures exist
-            if (this.textures.exists('player_down')) {
+            // Check if player textures exist (SWAT or placeholder)
+            if (this.textures.exists('swat_player') || this.textures.exists('player_down')) {
                 this.player = new Player(this, 900, 650); // Start closer to helicopter crash site
-                console.log('Player created successfully with textures');
+                console.log('Player created successfully with sprites');
+                console.log('Player texture:', this.player.texture.key);
+                console.log('Player using SWAT sprites:', this.player.usingSWATSprites);
             } else {
-                console.warn('Player textures not found, creating fallback player');
-                // Create a simple colored rectangle as player
-                this.player = this.add.rectangle(900, 650, 48, 64, 0x00ff00);
-                this.player.setDepth(1000);
-                
-                // Add basic physics
-                this.physics.add.existing(this.player);
-                this.player.body.setCollideWorldBounds(true);
-                this.player.body.setSize(32, 40);
-                this.player.body.setOffset(8, 24);
-                
-                // Add basic movement methods
-                this.player.health = 100;
-                this.player.maxHealth = 100;
-                this.player.damage = 30;
-                this.player.canTakeDamage = () => true;
-                this.player.takeDamage = (amount) => {
-                    this.player.health -= amount;
-                    window.gameState.playerHealth = this.player.health;
-                    window.updateUI.health(this.player.health, this.player.maxHealth);
-                };
-                this.player.shoot = () => {
-                    console.log('Player shooting (fallback)');
-                    // Create a simple bullet
-                    const bullet = this.bullets.get();
-                    if (bullet) {
-                        bullet.fire(this.player.x, this.player.y - 20, 0, -300);
-                    }
-                };
-                this.player.reload = () => console.log('Player reloading (fallback)');
-                this.player.update = () => {};
-                this.player.setDirection = () => {};
-                this.player.setMoving = () => {};
+                console.warn('No player textures found, creating fallback player');
+                this.createFallbackPlayer();
             }
             
             // Make sure player is visible and properly positioned
@@ -124,7 +105,10 @@ export class GameScene extends Phaser.Scene {
             this.player.setActive(true);
             this.player.setDepth(1000); // High depth to stay on top
             this.player.setAlpha(1);
-            this.player.setScale(1);
+            // Keep existing scale unless using placeholder rectangle sprite
+            if (!this.player.usingSWATSprites && this.player.texture.key !== 'swat_player') {
+                this.player.setScale(1);
+            }
             
             console.log('Player final position:', this.player.x, this.player.y);
         } catch (error) {
@@ -283,7 +267,7 @@ export class GameScene extends Phaser.Scene {
                     terrainType = 'dirt_road';
                 }
                 // Random rubble patches (reduced for clarity)
-                else if (Math.random() < 0.03) { // 3% chance instead of 15%
+                else if (Math.random() < 0.01) { // 1% chance – almost none
                     terrainType = 'rubble';
                 }
                 
@@ -368,6 +352,9 @@ export class GameScene extends Phaser.Scene {
             }).setOrigin(0.5).setDepth(2001);
             
             console.log('Helicopter marker added at position 1000, 750');
+            
+            // Simplified layout: skip additional burning wreckage and debris to reduce ground clutter
+            return; // <-- no more structures after the main helicopter & tail
             
             // Burning wreckage around crash site
             const burningPositions = [
@@ -498,8 +485,12 @@ export class GameScene extends Phaser.Scene {
     }
     
     createUrbanBarriers() {
-        console.log('Creating urban barriers...');
-        
+        console.log('Skipping urban barriers for simplified map...');
+
+        // Early exit: disable walls, sandbags, barricades to remove hidden obstacles
+        return;
+
+        /* The block below is kept for reference but will never execute
         try {
             // Compound walls around buildings
             const wallPositions = [
@@ -557,6 +548,7 @@ export class GameScene extends Phaser.Scene {
         } catch (error) {
             console.error('Error creating urban barriers:', error);
         }
+        */
     }
     
     createUrbanVegetation() {
@@ -691,7 +683,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         // Shooting
-        if (Phaser.Input.Keyboard.JustDown(this.wasd.SPACE)) {
+        if (this.wasd.SPACE.isDown) {
             this.player.shoot();
         }
         
@@ -787,9 +779,8 @@ export class GameScene extends Phaser.Scene {
             window.updateUI.score(window.gameState.score);
         }
         
-        // Remove bullet
-        bullet.setActive(false);
-        bullet.setVisible(false);
+        // Remove bullet properly and disable its physics body
+        bullet.deactivate();
         
         // Screen shake
         this.cameras.main.shake(50, 0.005);
@@ -811,9 +802,8 @@ export class GameScene extends Phaser.Scene {
             this.createSparkEffect(bullet.x, bullet.y);
         }
         
-        // Remove bullet
-        bullet.setActive(false);
-        bullet.setVisible(false);
+        // Remove bullet properly and disable its physics body
+        bullet.deactivate();
     }
     
     createSparkEffect(x, y) {
@@ -980,7 +970,7 @@ export class GameScene extends Phaser.Scene {
     }
     
     updateUI() {
-        window.updateUI.health(window.gameState.playerHealth, 100);
+        window.updateUI.health(window.gameState.playerHealth, this.player ? this.player.maxHealth : 100);
         window.updateUI.ammo(window.gameState.playerAmmo, window.gameState.maxAmmo);
         window.updateUI.score(window.gameState.score);
         window.updateUI.reloadStatus(window.gameState.isReloading);
@@ -1058,15 +1048,17 @@ export class GameScene extends Phaser.Scene {
             
             // Add weapon to first slot
             if (i === 0) {
-                const weaponIcon = this.add.image(x + slotSize/2, y + slotSize/2, 'pistol_down')
+                const iconTexture = this.player && this.player.weapons[this.player.currentWeapon].icon ? this.player.weapons[this.player.currentWeapon].icon : 'pistol_down';
+                const weaponIcon = this.add.image(x + slotSize/2, y + slotSize/2, iconTexture)
                     .setDepth(2002)
-                    .setScrollFactor(0)
-                    .setScale(0.8); // Scale down to fit in slot
+                    .setScrollFactor(0);
+                weaponIcon.setDisplaySize(slotSize*0.8, slotSize*0.8); // keep a margin
                 
                 this.inventoryItems.push(weaponIcon);
                 
                 // Add weapon name text below hotbar - more subtle
-                this.weaponNameText = this.add.text(x + slotSize/2, y + slotSize + 10, 'Pistol', {
+                const weaponName = this.player ? this.player.getCurrentWeaponName() : 'Weapon';
+                this.weaponNameText = this.add.text(x + slotSize/2, y + slotSize + 10, weaponName.charAt(0).toUpperCase()+weaponName.slice(1), {
                     fontSize: '12px',
                     fill: '#ffffff',
                     fontFamily: 'Courier New',
@@ -1097,6 +1089,13 @@ export class GameScene extends Phaser.Scene {
         if (this.weaponNameText && this.player) {
             const weaponName = this.player.getCurrentWeaponName();
             this.weaponNameText.setText(weaponName.charAt(0).toUpperCase() + weaponName.slice(1));
+            // Update icon texture for slot 0 if changed
+            const currentIcon = this.player.weapons[this.player.currentWeapon].icon;
+            const iconSprite = this.inventoryItems[0];
+            if(iconSprite && iconSprite.texture.key !== currentIcon){
+                iconSprite.setTexture(currentIcon);
+                iconSprite.setDisplaySize(slotSize*0.8, slotSize*0.8);
+            }
         }
     }
 
@@ -1151,5 +1150,42 @@ export class GameScene extends Phaser.Scene {
                 duration: Phaser.Math.Between(200, 350)
             });
         });
+    }
+
+    createFallbackPlayer() {
+        console.log('Creating fallback player...');
+        this.player = this.add.rectangle(900, 650, 48, 64, 0x00ff00);
+        this.player.setDepth(1000);
+        
+        // Add basic physics
+        this.physics.add.existing(this.player);
+        this.player.body.setCollideWorldBounds(true);
+        this.player.body.setSize(32, 40);
+        this.player.body.setOffset(8, 24);
+        
+        // Add basic movement methods
+        this.player.health = 100;
+        this.player.maxHealth = 100;
+        this.player.damage = 30;
+        this.player.usingSWATSprites = false;
+        this.player.canTakeDamage = () => true;
+        this.player.takeDamage = (amount) => {
+            this.player.health -= amount;
+            window.gameState.playerHealth = this.player.health;
+            window.updateUI.health(this.player.health, this.player.maxHealth);
+        };
+        this.player.shoot = () => {
+            console.log('Player shooting (fallback)');
+            const bullet = this.bullets.get();
+            if (bullet) {
+                bullet.fire(this.player.x, this.player.y - 20, 0, -300);
+            }
+        };
+        this.player.reload = () => console.log('Player reloading (fallback)');
+        this.player.update = () => {};
+        this.player.setDirection = () => {};
+        this.player.setMoving = () => {};
+        
+        console.log('Fallback player created');
     }
 } 

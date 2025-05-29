@@ -1,7 +1,11 @@
+import { ZombieSpriteManager } from '../utils/ZombieSpriteManager.js';
+
 export class Zombie extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
-        // Start with a default texture, we'll change it later
-        super(scene, x, y, 'zombie_down');
+        const useSheet = scene.textures.exists('zombie_sprite');
+        const textureKey = useSheet ? 'zombie_sprite' : 'zombie_down';
+        const frame = useSheet ? ZombieSpriteManager.getFrame('down') : 0;
+        super(scene, x, y, textureKey, frame);
         
         // Add to scene and physics
         scene.add.existing(this);
@@ -26,10 +30,15 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.lastAnimTime = 0;
         this.animFrame = 0;
         
-        // Set up physics body - adjusted for slimmer sprite (48x64)
+        // Set up physics body - adjusted for new sprite size (48x48)
         this.setCollideWorldBounds(true);
-        this.body.setSize(32, 40); // Slimmer collision box to match sprite
-        this.body.setOffset(8, 24); // Adjusted offset for centering
+        if(this.usingSheet){
+            this.body.setSize(34,51);
+            this.body.setOffset(0,0);
+        }else{
+            this.body.setSize(24,30);
+            this.body.setOffset(12,18);
+        }
         
         // Make sure sprite is visible and properly scaled
         this.setScale(1); // Normal scale
@@ -39,7 +48,15 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.setAlpha(1);
         
         // Set initial texture
-        this.setTexture('zombie_down');
+        this.setTexture(textureKey);
+        
+        this.usingSheet = useSheet;
+        if (this.usingSheet) {
+            ZombieSpriteManager.setupAnimations(scene);
+            this.setScale(0.1);
+            this.body.setSize(32,40);
+            this.body.setOffset(341*0.1/2 -16, 512*0.1 -50);
+        }
         
         console.log('Zombie created with texture:', this.texture.key);
         console.log('Zombie position:', this.x, this.y);
@@ -98,18 +115,22 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     }
     
     updateDirection(velX, velY) {
-        let newDirection = this.direction;
-        
-        // Determine direction based on velocity
-        if (Math.abs(velX) > Math.abs(velY)) {
-            newDirection = velX > 0 ? 'right' : 'left';
-        } else {
-            newDirection = velY > 0 ? 'down' : 'up';
-        }
-        
-        if (this.direction !== newDirection) {
-            this.direction = newDirection;
-            this.setTexture(`zombie_${newDirection}`);
+        let newDir;
+        if(Math.abs(velX)>Math.abs(velY)) newDir=velX>0?'right':'left';
+        else newDir=velY>0?'down':'up';
+        this.setDirection(newDir);
+    }
+    
+    setDirection(dir){
+        if(this.direction!==dir){
+            this.direction=dir;
+            if(this.usingSheet){
+                let frame = ZombieSpriteManager.getFrame(dir==='right'?'left':dir);
+                this.setFlipX(dir==='right');
+                this.setFrame(frame);
+            }else{
+                this.setTexture(`zombie_${dir}`);
+            }
         }
     }
     

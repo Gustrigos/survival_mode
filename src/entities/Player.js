@@ -1,6 +1,12 @@
+import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
+
 export class Player extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
-        super(scene, x, y, 'player_down');
+        // Try to use SWAT sprite first, fallback to placeholder
+        const initialTexture = scene.textures.exists('swat_player') ? 'swat_player' : 'player_down';
+        const initialFrame = scene.textures.exists('swat_player') ? SWATSpriteManager.getFrameForDirection('down') : 0;
+        
+        super(scene, x, y, initialTexture, initialFrame);
         
         // Add to scene and physics
         scene.add.existing(this);
@@ -10,17 +16,35 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.scene = scene;
         this.health = 100;
         this.maxHealth = 100;
+        this.usingSWATSprites = scene.textures.exists('swat_player');
+        
+        // Set up SWAT animations if using SWAT sprites
+        if (this.usingSWATSprites) {
+            SWATSpriteManager.setupAnimations(scene);
+        }
         
         // Weapon system
-        this.currentWeapon = 'pistol';
+        this.currentWeapon = 'machineGun';
         this.weapons = {
             pistol: {
                 ammo: 15,
                 maxAmmo: 15,
-                fireRate: 400, // ms between shots
+                fireRate: 400,
                 damage: 30,
-                reloadTime: 1500, // 1.5 seconds
-                bulletSpeed: 500
+                reloadTime: 1500,
+                bulletSpeed: 500,
+                automatic: false,
+                icon: 'weapon_right'
+            },
+            machineGun: {
+                ammo: 30,
+                maxAmmo: 30,
+                fireRate: 100, // automatic
+                damage: 20,
+                reloadTime: 2000,
+                bulletSpeed: 600,
+                automatic: true,
+                icon: 'machine_gun'
             }
         };
         
@@ -47,13 +71,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.lastDamageTime = 0;
         this.damageImmunityTime = 1000; // 1 second
         
-        // Set up physics body - adjusted for slimmer sprite (48x64)
+        // Set up physics body - adjusted for SWAT sprite size (341x512)
         this.setCollideWorldBounds(true);
-        this.body.setSize(32, 40); // Slimmer collision box to match sprite
-        this.body.setOffset(8, 24); // Adjusted offset for centering
+        if (this.usingSWATSprites) {
+            this.body.setSize(32, 40); // Collision box stays reasonable
+            this.body.setOffset(341*0.1/2 - 16, 512*0.1 - 50); // Adjusted for new scale
+            this.setScale(0.1); // Further scale down large SWAT sprites (341x512 -> ~34x51)
+        } else {
+            this.body.setSize(24, 30); // Original size for placeholder sprites
+            this.body.setOffset(12, 18);
+            this.setScale(1);
+        }
         
-        // Make sure sprite is visible and properly scaled
-        this.setScale(1); // Normal scale
+        // Make sure sprite is visible and properly configured
         this.setDepth(100);
         this.setVisible(true);
         this.setActive(true);
@@ -63,7 +93,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         window.gameState.playerHealth = this.health;
         window.gameState.playerAmmo = this.ammo;
         
+        // Weapon sprite attached to player
+        this.weaponSprite = null; // Disabled to avoid performance hit
+        
         console.log('Player created with texture:', this.texture.key);
+        console.log('Using SWAT sprites:', this.usingSWATSprites);
         console.log('Player position:', this.x, this.y);
         console.log('Player scale:', this.scaleX, this.scaleY);
         console.log('Player visible:', this.visible);
@@ -104,7 +138,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     setDirection(direction) {
         if (this.direction !== direction) {
             this.direction = direction;
-            this.setTexture(`player_${direction}`);
+            
+            if (this.usingSWATSprites) {
+                let frame = SWATSpriteManager.getFrameForDirection(direction);
+                if (direction === 'right') {
+                    // Use side frame and flip horizontally
+                    frame = SWATSpriteManager.getFrameForDirection('left');
+                    this.setFlipX(true);
+                } else {
+                    this.setFlipX(false);
+                }
+                this.setFrame(frame);
+            } else {
+                // Use placeholder sprites
+                this.setTexture(`player_${direction}`);
+            }
         }
     }
     
@@ -248,6 +296,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         // Screen flash effect
         this.scene.cameras.main.flash(200, 255, 100, 100);
         
+        // Update UI to reflect new health value
+        if (window.updateUI && window.updateUI.health) {
+            window.updateUI.health(this.health, this.maxHealth);
+        }
+        
         return true;
     }
     
@@ -259,6 +312,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     heal(amount) {
         this.health = Math.min(this.maxHealth, this.health + amount);
         window.gameState.playerHealth = this.health;
+        
+        // Update UI to reflect healed value
+        if (window.updateUI && window.updateUI.health) {
+            window.updateUI.health(this.health, this.maxHealth);
+        }
     }
     
     switchWeapon(weaponType) {
@@ -279,6 +337,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             window.updateUI.ammo(this.ammo, this.maxAmmo);
             
             console.log(`Switched to ${weaponType}`);
+            
+            if(this.weaponSprite){
+                this.weaponSprite.setTexture(weapon.icon);
+            }
         }
     }
     

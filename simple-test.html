@@ -3,54 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Phaser Test</title>
+    <title>Simple Pixel Art Sprites Test</title>
     <style>
         body {
             margin: 0;
             padding: 20px;
             background: #2c3e50;
             color: white;
-            font-family: Arial, sans-serif;
+            font-family: 'Courier New', monospace;
+            text-align: center;
         }
+        
         #game-container {
-            border: 2px solid #fff;
+            border: 3px solid #34495e;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
             margin: 20px auto;
-            display: block;
+        }
+        
+        h1 {
+            color: #3498db;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+        
+        .info {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #e74c3c;
+            margin: 20px auto;
+            max-width: 600px;
         }
     </style>
 </head>
 <body>
-    <h1>Simple Phaser Test</h1>
+    <h1>Simple Pixel Art Sprites Test</h1>
+    <div class="info">
+        <p>This test showcases our new simplified pixel art sprites inspired by the reference images.</p>
+        <p>Features:</p>
+        <ul style="text-align: left;">
+            <li>16x16 pixel sprites with clear black outlines</li>
+            <li>Top-down perspective for all characters</li>
+            <li>Simple, clean pixel art style</li>
+            <li>Bright, saturated colors</li>
+            <li>Fantasy/medieval theme elements</li>
+        </ul>
+        <p>Use WASD to move, SPACE to shoot</p>
+    </div>
+    
     <div id="game-container"></div>
 
     <script src="node_modules/phaser/dist/phaser.min.js"></script>
-    <script>
-        console.log('Phaser version:', Phaser.VERSION);
-        
+    <script type="module">
+        import { PlayerSpriteGenerator } from './src/utils/PlayerSpriteGenerator.js';
+        import { ZombieSpriteGenerator } from './src/utils/ZombieSpriteGenerator.js';
+        import { MapSpriteGenerator } from './src/utils/MapSpriteGenerator.js';
+
+        class TestScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'TestScene' });
+            }
+
+            preload() {
+                console.log('Generating simple pixel art sprites...');
+                
+                // Generate our new simplified sprites
+                PlayerSpriteGenerator.generateSprites(this);
+                ZombieSpriteGenerator.generateSprites(this);
+                MapSpriteGenerator.generateSprites(this);
+                
+                console.log('Sprites generated successfully');
+            }
+
+            create() {
+                // Create a simple background
+                this.add.rectangle(400, 300, 800, 600, 0x228B22);
+                
+                // Add title
+                this.add.text(400, 50, 'Simple Pixel Art Sprites', {
+                    fontSize: '24px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New',
+                    stroke: '#000000',
+                    strokeThickness: 2
+                }).setOrigin(0.5);
+                
+                // Create player sprite showcase
+                this.add.text(200, 120, 'Player Sprites:', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+                
+                // Show all player directions
+                const playerY = 160;
+                this.add.image(120, playerY, 'player_up').setScale(3);
+                this.add.text(120, playerY + 40, 'UP', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(160, playerY, 'player_down').setScale(3);
+                this.add.text(160, playerY + 40, 'DOWN', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(200, playerY, 'player_left').setScale(3);
+                this.add.text(200, playerY + 40, 'LEFT', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(240, playerY, 'player_right').setScale(3);
+                this.add.text(240, playerY + 40, 'RIGHT', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                // Create zombie sprite showcase
+                this.add.text(200, 250, 'Zombie Sprites:', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+                
+                // Show all zombie directions
+                const zombieY = 290;
+                this.add.image(120, zombieY, 'zombie_up').setScale(3);
+                this.add.text(120, zombieY + 40, 'UP', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(160, zombieY, 'zombie_down').setScale(3);
+                this.add.text(160, zombieY + 40, 'DOWN', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(200, zombieY, 'zombie_left').setScale(3);
+                this.add.text(200, zombieY + 40, 'LEFT', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(240, zombieY, 'zombie_right').setScale(3);
+                this.add.text(240, zombieY + 40, 'RIGHT', { fontSize: '12px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                // Create environment sprites showcase
+                this.add.text(500, 120, 'Environment Sprites:', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+                
+                // Show environment elements
+                let envX = 420;
+                let envY = 160;
+                
+                this.add.image(envX, envY, 'tree').setScale(2);
+                this.add.text(envX, envY + 30, 'Tree', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(envX + 60, envY, 'rock').setScale(2);
+                this.add.text(envX + 60, envY + 30, 'Rock', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(envX + 120, envY, 'bush').setScale(2);
+                this.add.text(envX + 120, envY + 30, 'Bush', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(envX, envY + 80, 'flowers').setScale(2);
+                this.add.text(envX, envY + 110, 'Flowers', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(envX + 60, envY + 80, 'military_crate').setScale(2);
+                this.add.text(envX + 60, envY + 110, 'Crate', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                this.add.image(envX + 120, envY + 80, 'campfire').setScale(2);
+                this.add.text(envX + 120, envY + 110, 'Fire', { fontSize: '10px', fill: '#ffffff' }).setOrigin(0.5);
+                
+                // Show helicopter wreckage
+                this.add.text(500, 320, 'Helicopter Wreckage:', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+                
+                this.add.image(500, 380, 'crashed_helicopter').setScale(1.5);
+                
+                // Create interactive player
+                this.add.text(400, 480, 'Interactive Test:', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+                
+                this.player = this.add.image(400, 520, 'player_down').setScale(2);
+                this.playerDirection = 'down';
+                
+                // Input
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.wasd = this.input.keyboard.addKeys('W,S,A,D,SPACE');
+                
+                this.add.text(400, 570, 'Use WASD to move the player and see direction changes!', {
+                    fontSize: '12px',
+                    fill: '#ffff00',
+                    fontFamily: 'Courier New'
+                }).setOrigin(0.5);
+            }
+
+            update() {
+                // Handle player movement and direction changes
+                let newDirection = this.playerDirection;
+                
+                if (this.wasd.W.isDown || this.cursors.up.isDown) {
+                    this.player.y -= 2;
+                    newDirection = 'up';
+                } else if (this.wasd.S.isDown || this.cursors.down.isDown) {
+                    this.player.y += 2;
+                    newDirection = 'down';
+                } else if (this.wasd.A.isDown || this.cursors.left.isDown) {
+                    this.player.x -= 2;
+                    newDirection = 'left';
+                } else if (this.wasd.D.isDown || this.cursors.right.isDown) {
+                    this.player.x += 2;
+                    newDirection = 'right';
+                }
+                
+                // Update sprite if direction changed
+                if (newDirection !== this.playerDirection) {
+                    this.playerDirection = newDirection;
+                    this.player.setTexture(`player_${newDirection}`);
+                }
+                
+                // Keep player in bounds
+                this.player.x = Phaser.Math.Clamp(this.player.x, 50, 750);
+                this.player.y = Phaser.Math.Clamp(this.player.y, 500, 550);
+            }
+        }
+
+        // Game configuration
         const config = {
             type: Phaser.AUTO,
             width: 800,
             height: 600,
             parent: 'game-container',
-            backgroundColor: '#2c5530',
-            scene: {
-                preload: function() {
-                    console.log('Preload called');
-                },
-                create: function() {
-                    console.log('Create called');
-                    this.add.text(400, 300, 'Phaser is working!', {
-                        fontSize: '32px',
-                        fill: '#ffffff'
-                    }).setOrigin(0.5);
-                    
-                    this.add.rectangle(400, 400, 100, 100, 0xff0000);
-                }
-            }
+            backgroundColor: '#2c3e50',
+            scene: TestScene,
+            pixelArt: true,
+            antialias: false
         };
-        
+
+        // Create the game
         const game = new Phaser.Game(config);
-        console.log('Game created:', game);
     </script>
 </body>
 </html> 
