@@ -30,17 +30,19 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
         this.setDepth(this.y + this.height);
         
         // Visual highlight to indicate collidable structure (filled + thick outline)
+        // Disabled for cleaner look - no more structure highlights
+        /*
         this.highlight = scene.add.rectangle(
             this.x,
             this.y,
-            this.displayWidth,
-            this.displayHeight,
-            0xffff00,
-            0.25 // 25% opacity fill
+            this.width + 8, // slightly larger than structure
+            this.height + 8
         );
+        this.highlight.setFillStyle(0x000000, 0); // transparent fill
         this.highlight.setOrigin(this.originX, this.originY);
         this.highlight.setStrokeStyle(4, 0xff00ff, 0.95); // thick magenta border
         this.highlight.setDepth(this.depth + 1);
+        */
         
         console.log(`Created ${this.structureType} structure at ${x}, ${y} with ${this.health} health`);
     }
@@ -233,22 +235,22 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     }
     
     destroy() {
-        console.log(`${this.structureType} destroyed!`);
+        // Mark as destroyed
+        this.isDestroyed = true;
         
+        // Clean up highlight
+        /*
         if (this.highlight) {
             this.highlight.destroy();
         }
-        
-        // Create destruction effect
-        this.createDestructionEffect();
-        
-        // Remove from physics world
-        if (this.body) {
-            this.body.destroy();
-        }
+        */
         
         // Remove sprite
         super.destroy();
+        
+        console.log(`${this.structureType} destroyed!`);
+        
+        return true; // Structure was destroyed
     }
     
     createDestructionEffect() {

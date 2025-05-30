@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collision Debug Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .info {
+            margin-bottom: 20px;
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        #game-container {
+            border: 2px solid #666;
+            margin: 0 auto;
+            display: block;
+        }
+        .debug-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>Enhanced Collision Debug Test</h3>
+        <p><strong>Controls:</strong> WASD to move, SPACE to shoot, R to reload</p>
+        <p><strong>Debug Features:</strong> Physics debug rendering enabled, enhanced logging</p>
+        <p><strong>Test:</strong> Shoot at zombies to verify collision detection improvements</p>
+    </div>
+    
+    <div class="debug-panel" id="debug-panel">
+        <div><strong>Debug Info:</strong></div>
+        <div id="debug-info">Starting...</div>
+    </div>
+    
+    <div id="game-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module">
+        import { GameScene } from './src/scenes/GameScene.js';
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 1024,
+            height: 768,
+            parent: 'game-container',
+            backgroundColor: '#2c3e50',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: true, // Enable debug rendering to see collision boxes
+                    debugShowBody: true,
+                    debugShowStaticBody: true,
+                    debugShowVelocity: true,
+                    debugVelocityColor: 0x00ff00,
+                    debugBodyColor: 0xff00ff,
+                    debugStaticBodyColor: 0xffffff
+                }
+            },
+            scene: GameScene
+        };
+
+        const game = new Phaser.Game(config);
+        
+        // Global state
+        window.gameState = {
+            wave: 1,
+            score: 0,
+            zombiesKilled: 0,
+            playerHealth: 100,
+            playerAmmo: 30,
+            isReloading: false
+        };
+
+        // Enhanced UI updater with debug panel
+        const debugPanel = document.getElementById('debug-info');
+        let debugMessages = [];
+        
+        function updateDebugPanel() {
+            debugPanel.innerHTML = debugMessages.slice(-10).join('<br>');
+        }
+        
+        function addDebugMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            debugMessages.push(`[${timestamp}] ${message}`);
+            if (debugMessages.length > 20) {
+                debugMessages = debugMessages.slice(-20);
+            }
+            updateDebugPanel();
+        }
+
+        window.updateUI = {
+            wave: (wave) => {
+                console.log('Wave:', wave);
+                addDebugMessage(`Wave: ${wave}`);
+            },
+            score: (score) => {
+                console.log('Score:', score);
+                addDebugMessage(`Score: ${score}`);
+            },
+            health: (health, maxHealth) => {
+                console.log('Health:', health + '/' + maxHealth);
+                addDebugMessage(`Health: ${health}/${maxHealth}`);
+            },
+            ammo: (ammo, maxAmmo) => {
+                console.log('Ammo:', ammo + '/' + maxAmmo);
+                addDebugMessage(`Ammo: ${ammo}/${maxAmmo}`);
+            },
+            zombiesLeft: (count) => {
+                console.log('Zombies left:', count);
+                addDebugMessage(`Zombies left: ${count}`);
+            },
+            reloadStatus: (isReloading, timeLeft) => {
+                if (isReloading) {
+                    console.log('Reloading...', timeLeft + 'ms left');
+                    addDebugMessage(`Reloading... ${Math.ceil(timeLeft/1000)}s`);
+                }
+            }
+        };
+        
+        // Add collision logging
+        const originalLog = console.log;
+        console.log = function(...args) {
+            if (args[0] && args[0].includes && (
+                args[0].includes('Bullet') || 
+                args[0].includes('Zombie') || 
+                args[0].includes('collision')
+            )) {
+                addDebugMessage(args.join(' '));
+            }
+            originalLog.apply(console, args);
+        };
+        
+        addDebugMessage('Collision debug test started');
+    </script>
+</body>
+</html> 

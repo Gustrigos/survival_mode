@@ -30,18 +30,38 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.lastAnimTime = 0;
         this.animFrame = 0;
         
-        // Set up physics body - adjusted for new sprite size (48x48)
+        // Set up physics body - make it cover the full visible sprite, same as player
         this.setCollideWorldBounds(true);
-        if(this.usingSheet){
-            this.body.setSize(34,51);
-            this.body.setOffset(0,0);
-        }else{
-            this.body.setSize(24,30);
-            this.body.setOffset(12,18);
+        
+        this.usingSheet = useSheet;
+        if (this.usingSheet) {
+            ZombieSpriteManager.setupAnimations(scene);
+            this.setScale(0.1);
+            
+            // DYNAMIC collision box based on actual visual bounds
+            const bounds = this.getBounds();
+            const collisionWidth = bounds.width * 3.0;   // 300% of visual bounds - much larger for easy targeting  
+            const collisionHeight = bounds.height * 3.5; // 350% of visual bounds - extra tall head-to-toe coverage
+            
+            // Set body size and center it (true flag centers automatically)
+            this.body.setSize(collisionWidth, collisionHeight, true);
+            
+            console.log(`Zombie sprite sheet body: ${collisionWidth.toFixed(1)}x${collisionHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
+        } else {
+            this.setScale(1); // Normal scale
+            
+            // DYNAMIC collision box for placeholder sprites
+            const bounds = this.getBounds();
+            const bodyWidth = bounds.width * 3.0;   // 300% of visual bounds - much larger
+            const bodyHeight = bounds.height * 3.5; // 350% of visual bounds - extra tall coverage
+            
+            // Set body size and center it automatically
+            this.body.setSize(bodyWidth, bodyHeight, true);
+            
+            console.log(`Zombie placeholder body: ${bodyWidth.toFixed(1)}x${bodyHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         }
         
         // Make sure sprite is visible and properly scaled
-        this.setScale(1); // Normal scale
         this.setDepth(50);
         this.setVisible(true);
         this.setActive(true);
@@ -49,14 +69,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         // Set initial texture
         this.setTexture(textureKey);
-        
-        this.usingSheet = useSheet;
-        if (this.usingSheet) {
-            ZombieSpriteManager.setupAnimations(scene);
-            this.setScale(0.1);
-            this.body.setSize(32,40);
-            this.body.setOffset(341*0.1/2 -16, 512*0.1 -50);
-        }
         
         console.log('Zombie created with texture:', this.texture.key);
         console.log('Zombie position:', this.x, this.y);

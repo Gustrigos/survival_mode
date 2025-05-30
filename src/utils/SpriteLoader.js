@@ -62,6 +62,10 @@ export class SpriteLoader {
         scene.load.image('bloodSplat', 'src/assets/sprites/effects/bloodSplat.png');
         scene.load.image('muzzleFlash', 'src/assets/sprites/effects/muzzleFlash.png');
         scene.load.image('shellCasing', 'src/assets/sprites/effects/shellCasing.png');
+        
+        // Helicopter crash site effects
+        scene.load.image('smoke_puff', 'src/assets/sprites/effects/smoke_puff.png');
+        scene.load.image('small_fire', 'src/assets/sprites/effects/small_fire.png');
     }
     
     static loadEnvironmentSprites(scene) {

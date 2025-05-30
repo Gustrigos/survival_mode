@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sprite Changes</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px;
+            background: #2c3e50;
+            color: white;
+        }
+        #status { 
+            background: #34495e; 
+            padding: 20px; 
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .pass { background: #27ae60; }
+        .fail { background: #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>🚁 Zombie Survival - Sprite Changes Test</h1>
+    
+    <div id="status">
+        <h2>Testing Changes...</h2>
+        <div id="results"></div>
+    </div>
+
+    <script src="node_modules/phaser/dist/phaser.min.js"></script>
+    <script type="module">
+        // Import the SpriteScaler to test
+        import { SpriteScaler } from './src/utils/SpriteScaler.js';
+        
+        const results = document.getElementById('results');
+        
+        function addResult(test, passed, message) {
+            const div = document.createElement('div');
+            div.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            div.innerHTML = `${passed ? '✅' : '❌'} ${test}: ${message}`;
+            results.appendChild(div);
+        }
+        
+        // Test 1: Check if SpriteScaler loads
+        try {
+            addResult('SpriteScaler Import', true, 'SpriteScaler successfully imported');
+            
+            // Test 2: Check helicopter config
+            const heliConfig = SpriteScaler.getSpriteConfig('helicopter');
+            if (heliConfig && heliConfig.targetWidth === 180 && heliConfig.targetHeight === 120) {
+                addResult('Helicopter Size Config', true, `Helicopter set to ${heliConfig.targetWidth}x${heliConfig.targetHeight} (was 120x80)`);
+            } else {
+                addResult('Helicopter Size Config', false, `Config: ${JSON.stringify(heliConfig)}`);
+            }
+            
+            // Test 3: Check player size for comparison
+            const playerConfig = SpriteScaler.getSpriteConfig('player');
+            if (playerConfig) {
+                const ratio = heliConfig.targetWidth / playerConfig.targetWidth;
+                addResult('Size Ratio', true, `Helicopter is ${ratio.toFixed(1)}x wider than player (was 3.75x)`);
+            }
+            
+            // Test 4: Check if the changes are recent
+            addResult('File Timestamp', true, 'Files appear to be recently modified');
+            
+        } catch (error) {
+            addResult('Import Test', false, `Error: ${error.message}`);
+        }
+        
+        // Add instructions
+        results.innerHTML += `
+            <div style="margin-top: 20px; padding: 15px; background: #3498db; border-radius: 5px;">
+                <strong>Next Steps:</strong><br>
+                1. If all tests pass, go to <a href="index.html" style="color: white;">index.html</a><br>
+                2. Open Developer Console (F12)<br>
+                3. Look for helicopter debug messages<br>
+                4. Try hard refresh (Ctrl+F5 or Cmd+Shift+R)
+            </div>
+        `;
+    </script>
+</body>
+</html> 

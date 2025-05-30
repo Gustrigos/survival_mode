@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helicopter Smoke Effects Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+        }
+        
+        .info {
+            background: rgba(52, 73, 94, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #e67e22;
+        }
+        
+        #game-container {
+            border: 2px solid #34495e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .feature {
+            background: rgba(52, 73, 94, 0.6);
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #e67e22;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>🚁 Helicopter Smoke Effects Test</h3>
+        <p><strong>New Feature:</strong> Enhanced crash site effects using your custom smoke_puff.png sprite!</p>
+        
+        <div class="features">
+            <div class="feature">✅ Multiple smoke sources (engine, cockpit, fuel, electrical, tail)</div>
+            <div class="feature">🔥 Variable fire effects with flickering</div>
+            <div class="feature">💨 Realistic wind drift and dispersion</div>
+            <div class="feature">⭐ Large smoke bursts for dramatic effect</div>
+            <div class="feature">📏 Automatic sprite scaling</div>
+            <div class="feature">🎮 WASD to move, SPACE to shoot</div>
+        </div>
+        
+        <p><strong>What to Look For:</strong> The helicopter crash site should have realistic smoke effects rising from multiple points, with your custom smoke_puff.png sprite properly scaled and animated.</p>
+    </div>
+    
+    <div id="game-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module">
+        import { GameScene } from './src/scenes/GameScene.js';
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 1024,
+            height: 768,
+            parent: 'game-container',
+            backgroundColor: '#87CEEB', // Sky blue to see smoke better
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false // Disable debug for cleaner view
+                }
+            },
+            scene: GameScene
+        };
+
+        const game = new Phaser.Game(config);
+        
+        // Global state
+        window.gameState = {
+            wave: 1,
+            score: 0,
+            zombiesKilled: 0,
+            playerHealth: 100,
+            playerAmmo: 30,
+            isReloading: false
+        };
+
+        // Simple UI updater for testing
+        window.updateUI = {
+            wave: (wave) => console.log('Wave:', wave),
+            score: (score) => console.log('Score:', score),
+            health: (health, maxHealth) => console.log('Health:', health + '/' + maxHealth),
+            ammo: (ammo, maxAmmo) => console.log('Ammo:', ammo + '/' + maxAmmo),
+            zombiesLeft: (count) => console.log('Zombies left:', count),
+            reloadStatus: (isReloading, timeLeft) => {
+                if (isReloading) console.log('Reloading...', Math.ceil(timeLeft/1000) + 's left');
+            }
+        };
+
+        // Add instructions after game loads
+        setTimeout(() => {
+            console.log('🚁 HELICOPTER SMOKE TEST LOADED');
+            console.log('📍 Navigate to the helicopter crash site to see enhanced smoke effects');
+            console.log('🎨 Using your custom smoke_puff.png sprite with realistic animations');
+            console.log('💨 Watch for multiple smoke sources and large smoke bursts');
+        }, 2000);
+    </script>
+</body>
+</html> 

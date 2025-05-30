@@ -4,6 +4,8 @@ import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
+import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
+import { SpriteScaler } from '../utils/SpriteScaler.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -47,6 +49,24 @@ export class GameScene extends Phaser.Scene {
                 console.error(`✗ Texture '${texture}' missing!`);
             }
         });
+        
+        // Optimize terrain textures for better performance and visual quality
+        try {
+            TerrainOptimizer.optimizeTextures(this, {
+                targetTileSize: 64,
+                useNearestFilter: true,
+                compressLargeTextures: true
+            });
+        } catch (error) {
+            console.warn('Terrain optimization failed:', error);
+        }
+        
+        // Apply automatic sprite scaling to fix oversized sprites
+        try {
+            SpriteScaler.applyGlobalScaling(this);
+        } catch (error) {
+            console.warn('Sprite scaling failed:', error);
+        }
         
         // Specifically check for helicopter texture
         if (this.textures.exists('crashed_helicopter')) {
@@ -109,6 +129,9 @@ export class GameScene extends Phaser.Scene {
             if (!this.player.usingSWATSprites && this.player.texture.key !== 'swat_player') {
                 this.player.setScale(1);
             }
+            
+            // Collision boxes are now properly set in Player.js constructor with generous sizing
+            // No need to override here anymore
             
             console.log('Player final position:', this.player.x, this.player.y);
         } catch (error) {
@@ -177,6 +200,37 @@ export class GameScene extends Phaser.Scene {
         }).setDepth(1000).setScrollFactor(0);
         
         this.updateDebugText();
+
+        /* ============================
+         *  DEBUGGING AIDS
+         *  ---------------------------
+         *  1. Collision-shape overlay using Phaser's built-in Arcade-debug graphics.
+         *  2. Toggle with the "H" key (think "hit-box"). Starts enabled so you see it right away.
+         * ============================ */
+
+        // Create a debug graphic once – Phaser will draw all bodies onto this each frame when enabled.
+        this.physics.world.createDebugGraphic();
+
+        // Bump the debug graphic above the playfield but below UI text so it is always visible.
+        if (this.physics.world.debugGraphic) {
+            // Let the graphic scroll with the world (default scrollFactor = 1)
+            this.physics.world.debugGraphic.setDepth(1500);
+        }
+
+        // Track visibility state
+        this.showDebugBodies = true;
+        if (this.physics.world.debugGraphic) {
+            this.physics.world.debugGraphic.visible = this.showDebugBodies;
+        }
+
+        // Press "H" to toggle collision-box visibility on-the-fly.
+        this.input.keyboard.on('keydown-H', () => {
+            this.showDebugBodies = !this.showDebugBodies;
+            if (this.physics.world.debugGraphic) {
+                this.physics.world.debugGraphic.visible = this.showDebugBodies;
+            }
+            console.log(`Debug hit-box overlay ${this.showDebugBodies ? 'ON' : 'OFF'}`);
+        });
     }
 
     createCrashSiteMap() {
@@ -242,11 +296,53 @@ export class GameScene extends Phaser.Scene {
     }
     
     createTerrain() {
-        const tileSize = 64;
-        const worldWidth = 2048;
-        const worldHeight = 1536;
+        // Terrain Configuration - Easy to adjust for different sizes and performance
+        const terrainConfig = {
+            tileSize: 64,           // Display size of each terrain tile
+            worldWidth: 2048,       // Total world width
+            worldHeight: 1536,      // Total world height
+            useNearestFilter: true, // Use pixel-perfect scaling (good for pixel art)
+            
+            // Terrain type definitions with optimal settings
+            terrainTypes: {
+                sand_texture: { 
+                    sourceSize: 1024,  // Original texture size
+                    tiling: true       // Whether texture should tile seamlessly
+                },
+                grass_texture: { 
+                    sourceSize: 1024, 
+                    tiling: true 
+                },
+                crackled_concrete: { 
+                    sourceSize: 1024, 
+                    tiling: true 
+                },
+                dirt_road: { 
+                    sourceSize: 32, 
+                    tiling: true 
+                },
+                dirt_texture: { 
+                    sourceSize: 32, 
+                    tiling: true 
+                },
+                rubble: { 
+                    sourceSize: 32, 
+                    tiling: false 
+                },
+                stone_texture: { 
+                    sourceSize: 32, 
+                    tiling: true 
+                },
+                water_texture: { 
+                    sourceSize: 32, 
+                    tiling: true 
+                }
+            }
+        };
         
-        console.log('Creating Somalia-style terrain...');
+        const { tileSize, worldWidth, worldHeight, useNearestFilter, terrainTypes } = terrainConfig;
+        
+        console.log(`Creating terrain with ${tileSize}x${tileSize} tiles...`);
         
         // Create varied terrain base
         for (let x = 0; x < worldWidth; x += tileSize) {
@@ -275,6 +371,24 @@ export class GameScene extends Phaser.Scene {
                 let tile;
                 if (this.textures.exists(terrainType)) {
                     tile = this.add.image(x + tileSize/2, y + tileSize/2, terrainType);
+                    
+                    // Ensure all terrain tiles are exactly the right size
+                    // This handles both 32x32 and 1024x1024 source textures properly
+                    tile.setDisplaySize(tileSize, tileSize);
+                    
+                    // Apply filtering based on configuration
+                    if (useNearestFilter) {
+                        // Use nearest neighbor scaling for pixel-perfect textures
+                        // This prevents blurring on pixel art style textures
+                        tile.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+                    }
+                    
+                    // Optional: Add tiling information for future use
+                    const typeConfig = terrainTypes[terrainType];
+                    if (typeConfig) {
+                        tile.setData('sourceSize', typeConfig.sourceSize);
+                        tile.setData('tiling', typeConfig.tiling);
+                    }
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
                     // Create fallback colored rectangles
@@ -289,7 +403,7 @@ export class GameScene extends Phaser.Scene {
             }
         }
         
-        console.log('Somalia-style terrain created successfully');
+        console.log(`Terrain created successfully with ${(worldWidth/tileSize) * (worldHeight/tileSize)} tiles`);
     }
     
     createCrashSiteStructures() {
@@ -304,57 +418,35 @@ export class GameScene extends Phaser.Scene {
                 destructible: false
             }, 0x2F4F4F, 240, 160);
             
-            // >>> NEW: enlarge the fuselage and adjust its collision box
-            const heliScale = 2; // make helicopter huge – fits ~6 players horizontally
-            helicopter.setScale(heliScale);
-            if (helicopter.body && helicopter.body.setSize) {
-                helicopter.body.setSize(200 * heliScale, 120 * heliScale);
-                helicopter.body.setOffset(20 * heliScale, 20 * heliScale);
+            // Apply proper scaling using SpriteScaler instead of hardcoded scaling
+            if (helicopter && helicopter.texture) {
+                console.log('🚁 BEFORE scaling - Helicopter size:', helicopter.width, 'x', helicopter.height);
+                SpriteScaler.autoScale(helicopter, 'crashed_helicopter', { maintainAspectRatio: true });
+                console.log('🚁 AFTER scaling - Helicopter display size:', helicopter.displayWidth, 'x', helicopter.displayHeight);
+                console.log('🚁 Target size from config:', SpriteScaler.getSpriteConfig('crashed_helicopter'));
+                
+                // Update collision box to match new size
+                if (helicopter.body && helicopter.body.setSize) {
+                    const scaledWidth = helicopter.displayWidth * 0.8;  // 80% of display size for collision
+                    const scaledHeight = helicopter.displayHeight * 0.6; // 60% of display size for collision
+                    helicopter.body.setSize(scaledWidth, scaledHeight);
+                    helicopter.body.setOffset(
+                        (helicopter.displayWidth - scaledWidth) / 2,
+                        (helicopter.displayHeight - scaledHeight) / 2
+                    );
+                    console.log('🚁 Collision box updated to:', scaledWidth, 'x', scaledHeight);
+                }
             }
             
-            // >>> NEW: detached tail section using the existing helicopter_wreckage texture
-            const tail = this.createStructureWithFallback(1130, 780, 'helicopter_wreckage', {
-                type: 'helicopter_tail',
-                material: 'metal',
-                health: 200,
-                destructible: true
-            }, 0x2F4F4F, 80, 60);
-            // Add a slight rotation for realism
-            if (tail.setRotation) tail.setRotation(0.4);
+            // Add smoke effects to the main helicopter
+            this.addHelicopterEffects(helicopter.x, helicopter.y);
             
-            // Extra smoke & flame effects near both parts
-            this.addHelicopterEffects(tail.x, tail.y);
-            
-            // Add a bright marker above the helicopter to help locate it
-            const helicopterMarker = this.add.circle(1000, 650, 20, 0xff0000, 0.8);
-            helicopterMarker.setDepth(2000);
-            helicopterMarker.setStrokeStyle(4, 0xffffff);
-            
-            // Add pulsing animation to the marker
-            this.tweens.add({
-                targets: helicopterMarker,
-                scaleX: 1.5,
-                scaleY: 1.5,
-                alpha: 0.3,
-                duration: 1000,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Sine.easeInOut'
-            });
-            
-            // Add text label
-            const helicopterLabel = this.add.text(1000, 620, 'HELICOPTER', {
-                fontSize: '16px',
-                fill: '#ffffff',
-                fontFamily: 'Courier New',
-                stroke: '#000000',
-                strokeThickness: 2
-            }).setOrigin(0.5).setDepth(2001);
-            
-            console.log('Helicopter marker added at position 1000, 750');
+            // Removed helicopter tail/wreckage - keeping only the main crashed helicopter
+            console.log('✅ Helicopter beacon and label have been removed');
+            console.log('🚁 Smoke effects added to main helicopter only');
             
             // Simplified layout: skip additional burning wreckage and debris to reduce ground clutter
-            return; // <-- no more structures after the main helicopter & tail
+            return; // <-- no more structures after the main helicopter
             
             // Burning wreckage around crash site
             const burningPositions = [
@@ -460,6 +552,10 @@ export class GameScene extends Phaser.Scene {
         try {
             if (this.textures.exists(textureKey)) {
                 const structure = new Structure(this, x, y, textureKey, config);
+                
+                // Don't auto-scale here since we handle scaling manually for specific structures
+                // This prevents double scaling issues
+                
                 this.structures.add(structure);
                 return structure;
             } else {
@@ -561,12 +657,14 @@ export class GameScene extends Phaser.Scene {
             ];
             
             palmPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'palm_tree', {
+                const palmTree = this.createStructureWithFallback(pos.x, pos.y, 'palm_tree', {
                     type: 'palm_tree',
                     material: 'wood',
                     health: 120,
                     destructible: true
                 }, 0x8B7355, 48, 80);
+                
+                // Trees are automatically scaled in createStructureWithFallback now
             });
             
             // Dead trees
@@ -575,12 +673,14 @@ export class GameScene extends Phaser.Scene {
             ];
             
             deadTreePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'dead_tree', {
+                const deadTree = this.createStructureWithFallback(pos.x, pos.y, 'dead_tree', {
                     type: 'dead_tree',
                     material: 'wood',
                     health: 60,
                     destructible: true
                 }, 0x654321, 32, 64);
+                
+                // Trees are automatically scaled in createStructureWithFallback now
             });
             
             // Scrub bushes (non-collidable decoration)
@@ -593,6 +693,9 @@ export class GameScene extends Phaser.Scene {
                 if (this.textures.exists('scrub_bush')) {
                     const bush = this.add.image(pos.x, pos.y, 'scrub_bush');
                     bush.setDepth(pos.y);
+                    
+                    // Apply scaling to bush
+                    SpriteScaler.autoScale(bush, 'bush', { maintainAspectRatio: true });
                 } else {
                     const bush = this.add.circle(pos.x, pos.y, 12, 0x6B8E23);
                     bush.setDepth(pos.y);
@@ -655,10 +758,23 @@ export class GameScene extends Phaser.Scene {
         let velocityY = 0;
         const speed = 200;
         
-        if (this.wasd.A.isDown) velocityX = -speed;
-        if (this.wasd.D.isDown) velocityX = speed;
-        if (this.wasd.W.isDown) velocityY = -speed;
-        if (this.wasd.S.isDown) velocityY = speed;
+        const pressedKeys = [];
+        if (this.wasd.A.isDown) {
+            velocityX = -speed;
+            pressedKeys.push('A');
+        }
+        if (this.wasd.D.isDown) {
+            velocityX = speed;
+            pressedKeys.push('D');
+        }
+        if (this.wasd.W.isDown) {
+            velocityY = -speed;
+            pressedKeys.push('W');
+        }
+        if (this.wasd.S.isDown) {
+            velocityY = speed;
+            pressedKeys.push('S');
+        }
         
         // Normalize diagonal movement
         if (velocityX !== 0 && velocityY !== 0) {
@@ -669,21 +785,31 @@ export class GameScene extends Phaser.Scene {
         player.setVelocity(velocityX, velocityY);
         
         // Update player direction and animation
+        let newDirection = null;
         if (velocityX !== 0 || velocityY !== 0) {
             player.setMoving(true);
             
             // Set direction based on movement
             if (Math.abs(velocityX) > Math.abs(velocityY)) {
-                player.setDirection(velocityX > 0 ? 'right' : 'left');
+                newDirection = velocityX > 0 ? 'right' : 'left';
             } else {
-                player.setDirection(velocityY > 0 ? 'down' : 'up');
+                newDirection = velocityY > 0 ? 'down' : 'up';
             }
+            player.setDirection(newDirection);
         } else {
             player.setMoving(false);
         }
         
-        // Shooting
+        // Enhanced shooting debug
         if (this.wasd.SPACE.isDown) {
+            console.log('🎯 SHOOTING INPUT:', {
+                pressedKeys,
+                currentDirection: player.direction,
+                newDirection,
+                velocity: { x: velocityX.toFixed(1), y: velocityY.toFixed(1) },
+                isMoving: velocityX !== 0 || velocityY !== 0,
+                playerPos: { x: player.x.toFixed(2), y: player.y.toFixed(2) }
+            });
             this.player.shoot();
         }
         
@@ -708,19 +834,16 @@ export class GameScene extends Phaser.Scene {
         this.zombieSpawnTimer += delta;
         
         if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > 2000) {
-            console.log(`Spawning zombie ${this.zombiesSpawned + 1} of ${this.zombiesInWave}`);
             this.spawnZombie();
             this.zombieSpawnTimer = 0;
             this.zombiesSpawned++;
         } else if (this.zombiesSpawned < this.zombiesInWave) {
             // Still waiting to spawn
-            console.log(`Waiting to spawn zombie. Timer: ${this.zombieSpawnTimer}, Spawned: ${this.zombiesSpawned}/${this.zombiesInWave}`);
+
         }
     }
     
     spawnZombie() {
-        console.log('Spawning zombie...');
-        
         // Spawn zombie near the edges of the world, but not too close to player
         const playerX = this.player.x;
         const playerY = this.player.y;
@@ -755,20 +878,49 @@ export class GameScene extends Phaser.Scene {
             attempts++;
         } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < 10);
         
-        console.log(`Spawning zombie at position: ${spawnX}, ${spawnY}`);
+        console.log('🧟 ZOMBIE SPAWN ATTEMPT:', {
+            side: ['Top', 'Right', 'Bottom', 'Left'][side],
+            spawnPos: { x: spawnX.toFixed(2), y: spawnY.toFixed(2) },
+            playerPos: { x: playerX.toFixed(2), y: playerY.toFixed(2) },
+            distanceFromPlayer: Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY).toFixed(2),
+            attempts
+        });
         
         const zombie = new Zombie(this, spawnX, spawnY);
         this.zombies.add(zombie);
         
-        console.log('Zombie created:', zombie);
+        // Enhanced zombie debugging after creation
+        console.log('🟢 ZOMBIE CREATED:', {
+            position: { x: zombie.x.toFixed(2), y: zombie.y.toFixed(2) },
+            bodyCenter: { x: zombie.body.center.x.toFixed(2), y: zombie.body.center.y.toFixed(2) },
+            bodySize: { w: zombie.body.width, h: zombie.body.height },
+            bodyOffset: { x: zombie.body.offset.x.toFixed(2), y: zombie.body.offset.y.toFixed(2) },
+            scale: { x: zombie.scaleX.toFixed(3), y: zombie.scaleY.toFixed(3) },
+            texture: zombie.texture.key,
+            usingSheet: zombie.usingSheet,
+            health: zombie.health,
+            speed: zombie.speed.toFixed(1)
+        });
+        
         console.log('Total zombies:', this.zombies.children.size);
         
         window.updateUI.zombiesLeft(this.zombiesInWave - this.zombies.children.size);
     }
     
     bulletHitZombie(bullet, zombie) {
-        // Create blood splat
-        this.createBloodSplat(zombie.x, zombie.y);
+        console.log('Bullet hit zombie!', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            zombiePos: { x: zombie.x.toFixed(2), y: zombie.y.toFixed(2) },
+            bulletBodyCenter: { x: bullet.body.center.x.toFixed(2), y: bullet.body.center.y.toFixed(2) },
+            zombieBodyCenter: { x: zombie.body.center.x.toFixed(2), y: zombie.body.center.y.toFixed(2) },
+            bulletSize: { w: bullet.body.width, h: bullet.body.height },
+            zombieSize: { w: zombie.body.width, h: zombie.body.height },
+            bulletScale: { x: bullet.scaleX.toFixed(3), y: bullet.scaleY.toFixed(3) },
+            zombieScale: { x: zombie.scaleX.toFixed(3), y: zombie.scaleY.toFixed(3) }
+        });
+        
+        // Create blood splat at zombie's center for better visual feedback
+        this.createBloodSplat(zombie.body.center.x, zombie.body.center.y);
         
         // Damage zombie
         const killed = zombie.takeDamage(this.player.damage);
@@ -810,8 +962,10 @@ export class GameScene extends Phaser.Scene {
         const sparkCount = 5;
         
         for (let i = 0; i < sparkCount; i++) {
-            const spark = this.add.rectangle(x, y, 2, 2, 0xFFD700);
+            const spark = this.add.rectangle(x, y, 2, 2, 0xFF69B4);
             spark.setDepth(1000);
+            
+            console.log('✨ Created pink spark effect (was yellow)');
             
             this.tweens.add({
                 targets: spark,
@@ -1041,7 +1195,7 @@ export class GameScene extends Phaser.Scene {
             
             // Selected slot highlight (only for first slot initially)
             if (i === 0) {
-                slot.setStrokeStyle(3, 0xffffff, 0.9); // Thicker white border for selection
+                slot.setStrokeStyle(3, 0xFF69B4, 0.9); // Pink border for selection instead of white
             }
             
             this.inventorySlots.push(slot);
@@ -1079,7 +1233,7 @@ export class GameScene extends Phaser.Scene {
         // Update selected slot highlighting
         this.inventorySlots.forEach((slot, index) => {
             if (index === this.selectedSlot) {
-                slot.setStrokeStyle(3, 0xffffff, 0.9); // Selected: thicker white border
+                slot.setStrokeStyle(3, 0xFF69B4, 0.9); // Selected: thicker pink border
             } else {
                 slot.setStrokeStyle(2, 0x404040, 0.8); // Unselected: thicker darker grey border
             }
@@ -1100,56 +1254,91 @@ export class GameScene extends Phaser.Scene {
     }
 
     addHelicopterEffects(x, y) {
-        // Positions relative to helicopter center for smoke puffs (engine & tail)
+        console.log('🚁 Adding basic helicopter smoke effects');
+        
+        // Much simpler approach - just 2 basic smoke sources
         const smokeOffsets = [
-            { dx: 50, dy: -30 }, // Engine top
-            { dx: -60, dy: -20 } // Cockpit top-left
+            { dx: 0, dy: -20, type: 'main' },      // Main engine smoke
+            { dx: 30, dy: 10, type: 'secondary' }  // Secondary smoke source
         ];
         
-        smokeOffsets.forEach(offset => {
+        smokeOffsets.forEach((offset, index) => {
             this.time.addEvent({
-                delay: Phaser.Math.Between(600, 1200),
+                delay: Phaser.Math.Between(800, 1200), // Slower, more basic timing
                 loop: true,
                 callback: () => {
-                    const puff = this.add.image(x + offset.dx, y + offset.dy, 'smoke_puff');
-                    puff.setDepth(y);
-                    const startScale = Phaser.Math.FloatBetween(0.8, 1.2);
-                    puff.setScale(startScale);
+                    let puff;
+                    
+                    if (this.textures.exists('smoke_puff')) {
+                        puff = this.add.image(x + offset.dx, y + offset.dy, 'smoke_puff');
+                        
+                        // Use SpriteScaler consistently like we did for helicopter
+                        SpriteScaler.autoScale(puff, 'smoke_puff', { maintainAspectRatio: true });
+                        
+                        console.log('✅ Using smoke_puff.png with SpriteScaler:', puff.displayWidth, 'x', puff.displayHeight);
+                    } else {
+                        // Simple fallback - very small circle
+                        puff = this.add.circle(x + offset.dx, y + offset.dy, 3, 0x666666);
+                        console.log('⚠️ smoke_puff.png not found, using 3px fallback');
+                    }
+                    
+                    puff.setDepth(y + 100);
                     puff.setAlpha(0.7);
+                    
+                    // Basic upward movement with simple expansion
                     this.tweens.add({
                         targets: puff,
-                        y: puff.y - 40,
-                        scaleX: startScale * 1.6,
-                        scaleY: startScale * 1.6,
+                        y: puff.y - 60, // Simple upward movement
+                        x: puff.x + Phaser.Math.Between(-10, 10), // Minimal drift
+                        scaleX: (puff.scaleX || 1) * 2, // Double the size
+                        scaleY: (puff.scaleY || 1) * 2, // Double the size
                         alpha: 0,
-                        duration: 3000,
-                        ease: 'Sine.easeOut',
+                        duration: 3000, // Simple 3 second duration
+                        ease: 'Linear',
                         onComplete: () => puff.destroy()
                     });
                 }
             });
         });
         
-        // Static small fires on wreckage
-        const fireOffsets = [
-            { dx: -20, dy: 30 },
-            { dx: 40, dy: 25 }
-        ];
-        fireOffsets.forEach(offset => {
-            const flame = this.add.image(x + offset.dx, y + offset.dy, 'small_fire');
-            flame.setDepth(y);
-            flame.setAlpha(0.9);
-            // Flicker animation
+        // Simple fire effects
+        if (this.textures.exists('small_fire')) {
+            const flame = this.add.image(x - 10, y + 20, 'small_fire');
+            
+            // Use SpriteScaler for fire too
+            SpriteScaler.autoScale(flame, 'small_fire', { maintainAspectRatio: true });
+            
+            flame.setDepth(y + 50);
+            flame.setAlpha(0.8);
+            
+            // Simple flickering
             this.tweens.add({
                 targets: flame,
-                scaleX: { from: 0.9, to: 1.1 },
-                scaleY: { from: 0.9, to: 1.1 },
-                alpha: { from: 0.7, to: 1 },
+                alpha: { from: 0.6, to: 1.0 },
                 yoyo: true,
                 repeat: -1,
-                duration: Phaser.Math.Between(200, 350)
+                duration: 400
             });
-        });
+            
+            console.log('✅ Using small_fire.png with SpriteScaler:', flame.displayWidth, 'x', flame.displayHeight);
+        } else {
+            // Simple fallback fire
+            const flame = this.add.circle(x - 10, y + 20, 8, 0xFF4500);
+            flame.setDepth(y + 50);
+            flame.setAlpha(0.8);
+            
+            this.tweens.add({
+                targets: flame,
+                alpha: { from: 0.6, to: 1.0 },
+                yoyo: true,
+                repeat: -1,
+                duration: 400
+            });
+            
+            console.log('⚠️ small_fire.png not found, using 8px fallback');
+        }
+        
+        console.log('🔥 Basic helicopter effects initialized');
     }
 
     createFallbackPlayer() {

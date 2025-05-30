@@ -71,16 +71,33 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.lastDamageTime = 0;
         this.damageImmunityTime = 1000; // 1 second
         
-        // Set up physics body - adjusted for SWAT sprite size (341x512)
+        // Set up physics body - make it cover the full visible sprite
         this.setCollideWorldBounds(true);
+        
         if (this.usingSWATSprites) {
-            this.body.setSize(32, 40); // Collision box stays reasonable
-            this.body.setOffset(341*0.1/2 - 16, 512*0.1 - 50); // Adjusted for new scale
-            this.setScale(0.1); // Further scale down large SWAT sprites (341x512 -> ~34x51)
+            this.setScale(0.1); // Scale down large SWAT sprites (341x512 -> ~34x51)
+            
+            // DYNAMIC collision box based on actual visual bounds
+            const bounds = this.getBounds();
+            const collisionWidth = bounds.width * 3.0;   // 300% of visual bounds - much larger for easy targeting
+            const collisionHeight = bounds.height * 3.5; // 350% of visual bounds - extra tall head-to-toe coverage
+            
+            // Set body size and center it (true flag centers automatically)
+            this.body.setSize(collisionWidth, collisionHeight, true);
+            
+            console.log(`Player SWAT body: ${collisionWidth.toFixed(1)}x${collisionHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         } else {
-            this.body.setSize(24, 30); // Original size for placeholder sprites
-            this.body.setOffset(12, 18);
             this.setScale(1);
+            
+            // DYNAMIC collision box for placeholder sprites
+            const bounds = this.getBounds();
+            const bodyWidth = bounds.width * 3.0;   // 300% of visual bounds - much larger
+            const bodyHeight = bounds.height * 3.5; // 350% of visual bounds - extra tall coverage
+            
+            // Set body size and center it automatically
+            this.body.setSize(bodyWidth, bodyHeight, true);
+            
+            console.log(`Player placeholder body: ${bodyWidth.toFixed(1)}x${bodyHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         }
         
         // Make sure sprite is visible and properly configured
@@ -137,7 +154,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     
     setDirection(direction) {
         if (this.direction !== direction) {
+            const oldDirection = this.direction;
             this.direction = direction;
+            
+            console.log('🧭 DIRECTION CHANGE:', {
+                from: oldDirection,
+                to: direction,
+                playerPos: { x: this.x.toFixed(2), y: this.y.toFixed(2) }
+            });
             
             if (this.usingSWATSprites) {
                 let frame = SWATSpriteManager.getFrameForDirection(direction);
@@ -179,19 +203,55 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         const currentTime = this.scene.time.now;
         
         if (this.isReloading || this.ammo <= 0 || currentTime - this.lastShotTime < this.fireRate) {
+            console.log('🚫 Shoot blocked:', {
+                isReloading: this.isReloading,
+                ammo: this.ammo,
+                timeSinceLastShot: currentTime - this.lastShotTime,
+                fireRate: this.fireRate
+            });
             return;
         }
         
+        // Enhanced debugging for direction and position
+        console.log('🔫 SHOOTING DEBUG:', {
+            playerDirection: this.direction,
+            playerPosition: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
+            playerBodyCenter: { x: this.body.center.x.toFixed(2), y: this.body.center.y.toFixed(2) },
+            playerBodySize: { w: this.body.width, h: this.body.height },
+            playerScale: { x: this.scaleX.toFixed(3), y: this.scaleY.toFixed(3) },
+            usingSWATSprites: this.usingSWATSprites
+        });
+
         // Calculate bullet direction based on player direction
         let bulletVelX = 0;
         let bulletVelY = 0;
         let muzzleOffsetX = 0;
         let muzzleOffsetY = 0;
         
+        // Calculate the TRUE center of the player sprite by accounting for the collision box
+        // For SWAT sprites: sprite is 341x512 scaled to 0.1 = ~34x51, collision box is 32x40
+        // For placeholder sprites: sprite is 32x32, collision box is 24x30
+        let playerCenterX, playerCenterY;
+        
+        if (this.usingSWATSprites) {
+            // For SWAT sprites, the collision box is centered within the scaled sprite
+            // this.x, this.y is the sprite origin, but we need to find the center of the collision box
+            playerCenterX = this.x + this.body.centerX - this.x;
+            playerCenterY = this.y + this.body.centerY - this.y;
+        } else {
+            // For placeholder sprites, use the collision box center
+            playerCenterX = this.x + this.body.centerX - this.x;
+            playerCenterY = this.y + this.body.centerY - this.y;
+        }
+        
+        // Simplified: Use the physics body center directly
+        playerCenterX = this.body.center.x;
+        playerCenterY = this.body.center.y;
+        
         switch (this.direction) {
             case 'up':
                 bulletVelY = -this.bulletSpeed;
-                muzzleOffsetY = -20;
+                muzzleOffsetY = -20; // Slightly increased offset
                 break;
             case 'down':
                 bulletVelY = this.bulletSpeed;
@@ -207,10 +267,36 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 break;
         }
         
-        // Create bullet
+        // Enhanced debugging for bullet creation
+        const bulletStartX = playerCenterX + muzzleOffsetX;
+        const bulletStartY = playerCenterY + muzzleOffsetY;
+        
+        console.log('🎯 BULLET CREATION:', {
+            direction: this.direction,
+            startPos: { x: bulletStartX.toFixed(2), y: bulletStartY.toFixed(2) },
+            velocity: { x: bulletVelX, y: bulletVelY },
+            muzzleOffset: { x: muzzleOffsetX, y: muzzleOffsetY },
+            bulletSpeed: this.bulletSpeed
+        });
+
+        // Create bullet starting from player's collision box center
         const bullet = this.scene.bullets.get();
         if (bullet) {
-            bullet.fire(this.x + muzzleOffsetX, this.y + muzzleOffsetY, bulletVelX, bulletVelY);
+            bullet.fire(bulletStartX, bulletStartY, bulletVelX, bulletVelY);
+            
+            // Log bullet state after firing
+            console.log('🟢 BULLET FIRED:', {
+                bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+                bulletVel: { x: bullet.body.velocity.x, y: bullet.body.velocity.y },
+                bulletActive: bullet.active,
+                bulletVisible: bullet.visible,
+                bulletBodyEnabled: bullet.body.enable,
+                bulletScale: { x: bullet.scaleX.toFixed(3), y: bullet.scaleY.toFixed(3) },
+                bulletBodySize: { w: bullet.body.width, h: bullet.body.height },
+                bulletBodyOffset: { x: bullet.body.offset.x.toFixed(2), y: bullet.body.offset.y.toFixed(2) }
+            });
+        } else {
+            console.log('❌ NO BULLET AVAILABLE FROM POOL');
         }
         
         // Create muzzle flash
@@ -237,16 +323,38 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
     
     createMuzzleFlash(offsetX, offsetY) {
-        const muzzleFlash = this.scene.add.image(this.x + offsetX, this.y + offsetY, 'muzzleFlash');
+        // Use physics body center position for muzzle flash consistency with bullets
+        const muzzleFlash = this.scene.add.image(this.body.center.x + offsetX, this.body.center.y + offsetY, 'muzzleFlash');
         muzzleFlash.setDepth(this.depth + 1);
         
-        // Animate muzzle flash
+        // Base scale relative to player size for consistency with tiny sprites
+        const baseScale = this.scaleX * 0.20; // ~18% of player height (smaller)
+        muzzleFlash.setScale(baseScale);
+        muzzleFlash.setAlpha(0.85); // More transparent
+        
+        // Rotate muzzle flash to match firing direction
+        switch (this.direction) {
+            case 'up':
+                muzzleFlash.setAngle(-90);
+                break;
+            case 'down':
+                muzzleFlash.setAngle(90);
+                break;
+            case 'right':
+                muzzleFlash.setAngle(180);
+                break;
+            default:
+                muzzleFlash.setAngle(0);
+        }
+        
+        // Animate muzzle flash: quick expansion & fade
         this.scene.tweens.add({
             targets: muzzleFlash,
             alpha: 0,
-            scaleX: 2,
-            scaleY: 2,
-            duration: 100,
+            scaleX: baseScale * 1.5,
+            scaleY: baseScale * 1.5,
+            duration: 55, // fades even faster
+            ease: 'Quad.easeOut',
             onComplete: () => muzzleFlash.destroy()
         });
     }

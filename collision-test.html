@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collision Test - Zombie Survival</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>Collision Test</h3>
+        <p>Use WASD to move, SPACE to shoot</p>
+        <p>Check console for collision debug messages</p>
+    </div>
+    <div id="game-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module">
+        import { GameScene } from './src/scenes/GameScene.js';
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 1024,
+            height: 768,
+            parent: 'game-container',
+            backgroundColor: '#2c3e50',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: true // Enable debug rendering to see collision boxes
+                }
+            },
+            scene: GameScene
+        };
+
+        const game = new Phaser.Game(config);
+        
+        // Global state
+        window.gameState = {
+            wave: 1,
+            score: 0,
+            zombiesKilled: 0,
+            playerHealth: 100,
+            playerAmmo: 30,
+            isReloading: false
+        };
+
+        // Simple UI updater
+        window.updateUI = {
+            wave: (wave) => console.log('Wave:', wave),
+            score: (score) => console.log('Score:', score),
+            health: (health, maxHealth) => console.log('Health:', health + '/' + maxHealth),
+            ammo: (ammo, maxAmmo) => console.log('Ammo:', ammo + '/' + maxAmmo),
+            zombiesLeft: (count) => console.log('Zombies left:', count),
+            reloadStatus: (isReloading, timeLeft) => {
+                if (isReloading) console.log('Reloading...', timeLeft + 'ms left');
+            }
+        };
+    </script>
+</body>
+</html> 

@@ -3,172 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zombie Survival Debug Test</title>
+    <title>Zombie Survival - Enhanced Shooting Debug</title>
     <style>
         body {
             margin: 0;
-            padding: 0;
-            background: #2c3e50;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            padding: 20px;
             font-family: 'Courier New', monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+        }
+        
+        .info {
+            background: rgba(52, 73, 94, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .debug-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            max-height: 500px;
+            background: rgba(44, 62, 80, 0.95);
+            border: 2px solid #e74c3c;
+            border-radius: 8px;
+            padding: 15px;
+            overflow-y: auto;
+            font-size: 11px;
+            z-index: 1000;
+        }
+        
+        .debug-panel h4 {
+            margin: 0 0 10px 0;
+            color: #e74c3c;
+            text-align: center;
         }
         
         #game-container {
-            border: 3px solid #34495e;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        }
-        
-        #ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            font-size: 18px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px solid #e74c3c;
-        }
-        
-        .ui-bar {
-            width: 200px;
-            height: 20px;
-            background: #34495e;
-            border: 2px solid #2c3e50;
-            margin: 5px 0;
-            border-radius: 10px;
+            border: 2px solid #34495e;
+            border-radius: 8px;
             overflow: hidden;
         }
         
-        .ui-fill {
-            height: 100%;
-            transition: width 0.3s ease;
-            border-radius: 8px;
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
         }
         
-        .health-fill {
-            background: linear-gradient(90deg, #e74c3c, #c0392b);
+        .controls div {
+            background: rgba(52, 73, 94, 0.6);
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #3498db;
         }
         
-        .ammo-fill {
-            background: linear-gradient(90deg, #f39c12, #e67e22);
-        }
-        
-        #controls {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: white;
-            font-size: 14px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px solid #3498db;
-        }
-        
-        #score {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-            z-index: 1000;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px solid #27ae60;
-        }
-        
-        #console {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: #000;
-            color: #0f0;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            height: 200px;
-            width: 400px;
-            overflow-y: auto;
-            border: 2px solid #0f0;
-            border-radius: 5px;
+        .status {
+            background: rgba(39, 174, 96, 0.2);
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
+    <div class="info">
+        <h3>🔫 Enhanced Shooting Debug Test</h3>
+        <p><strong>Issue:</strong> Player can't shoot zombies effectively</p>
+        <p><strong>Debug Features:</strong> Comprehensive logging for shooting mechanics, player direction, bullet movement, and collision detection</p>
+        <div class="controls">
+            <div><strong>Movement:</strong> WASD keys</div>
+            <div><strong>Shooting:</strong> SPACE (hold for auto)</div>
+            <div><strong>Reload:</strong> R key</div>
+            <div><strong>Physics Debug:</strong> Enabled (see collision boxes)</div>
+        </div>
+        <p><strong>Instructions:</strong> Open browser console (F12) to see detailed debug logs. Try shooting at zombies and watch the console for shooting, direction, and collision data.</p>
+    </div>
+    
+    <div class="debug-panel">
+        <h4>🎯 Debug Monitor</h4>
+        <div class="status" id="game-status">Loading...</div>
+        <div id="debug-log">Debug logs will appear here...</div>
+    </div>
+    
     <div id="game-container"></div>
-    
-    <div id="ui">
-        <div>Health: <span id="health">100</span>/100</div>
-        <div class="ui-bar">
-            <div class="ui-fill health-fill" id="health-bar" style="width: 100%;"></div>
-        </div>
-        <div>Ammo: <span id="ammo">30</span>/30</div>
-        <div class="ui-bar">
-            <div class="ui-fill ammo-fill" id="ammo-bar" style="width: 100%;"></div>
-        </div>
-        <div id="reload-status"></div>
-    </div>
-    
-    <div id="score">
-        <div>Score: <span id="score-value">0</span></div>
-        <div>Wave: <span id="wave">1</span></div>
-        <div>Zombies: <span id="zombies-left">5</span></div>
-    </div>
-    
-    <div id="controls">
-        <div><strong>Controls:</strong></div>
-        <div>WASD - Move</div>
-        <div>SPACE - Shoot</div>
-        <div>R - Reload</div>
-    </div>
 
-    <div id="console">
-        <div>Console output:</div>
-    </div>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module">
+        import { GameScene } from './src/scenes/GameScene.js';
 
-    <script>
-        // Capture console output
-        const consoleDiv = document.getElementById('console');
+        const config = {
+            type: Phaser.AUTO,
+            width: 1024,
+            height: 768,
+            parent: 'game-container',
+            backgroundColor: '#2c3e50',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: true, // Enable physics debug rendering
+                    debugShowBody: true,
+                    debugShowStaticBody: true,
+                    debugShowVelocity: true,
+                    debugVelocityColor: 0x00ff00,
+                    debugBodyColor: 0xff00ff,
+                    debugStaticBodyColor: 0xffffff
+                }
+            },
+            scene: GameScene
+        };
+
+        const game = new Phaser.Game(config);
+        
+        // Global state
+        window.gameState = {
+            wave: 1,
+            score: 0,
+            zombiesKilled: 0,
+            playerHealth: 100,
+            playerAmmo: 30,
+            isReloading: false
+        };
+
+        // Enhanced UI updater with debug panel
+        const debugLog = document.getElementById('debug-log');
+        const gameStatus = document.getElementById('game-status');
+        let debugMessages = [];
+        
+        // Intercept console.log to show in debug panel
         const originalLog = console.log;
-        const originalError = console.error;
-        const originalWarn = console.warn;
-        
-        function addToConsole(message, color = '#0f0') {
-            consoleDiv.innerHTML += '<div style="color: ' + color + ';">' + message + '</div>';
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
-        }
-        
         console.log = function(...args) {
             originalLog.apply(console, args);
-            addToConsole(args.join(' '), '#0f0');
+            
+            // Filter and format debug messages for the panel
+            const message = args.join(' ');
+            if (message.includes('🔫') || message.includes('🎯') || message.includes('🧭') || 
+                message.includes('🧟') || message.includes('🚀') || message.includes('💥') ||
+                message.includes('Bullet hit zombie!')) {
+                
+                debugMessages.unshift(message);
+                if (debugMessages.length > 20) {
+                    debugMessages = debugMessages.slice(0, 20);
+                }
+                
+                debugLog.innerHTML = debugMessages
+                    .map(msg => `<div style="margin: 2px 0; padding: 2px; background: rgba(52,152,219,0.1); border-radius: 2px; font-size: 10px;">${msg}</div>`)
+                    .join('');
+            }
         };
         
-        console.error = function(...args) {
-            originalError.apply(console, args);
-            addToConsole('ERROR: ' + args.join(' '), '#f00');
+        // UI updater with status display
+        window.updateUI = {
+            wave: (wave) => {
+                gameStatus.innerHTML = `Wave: ${wave} | Score: ${window.gameState.score} | Health: ${window.gameState.playerHealth}/100 | Ammo: ${window.gameState.playerAmmo}`;
+            },
+            score: (score) => {
+                window.gameState.score = score;
+                gameStatus.innerHTML = `Wave: ${window.gameState.wave} | Score: ${score} | Health: ${window.gameState.playerHealth}/100 | Ammo: ${window.gameState.playerAmmo}`;
+            },
+            health: (health, maxHealth) => {
+                window.gameState.playerHealth = health;
+                gameStatus.innerHTML = `Wave: ${window.gameState.wave} | Score: ${window.gameState.score} | Health: ${health}/${maxHealth} | Ammo: ${window.gameState.playerAmmo}`;
+            },
+            ammo: (ammo, maxAmmo) => {
+                window.gameState.playerAmmo = ammo;
+                gameStatus.innerHTML = `Wave: ${window.gameState.wave} | Score: ${window.gameState.score} | Health: ${window.gameState.playerHealth}/100 | Ammo: ${ammo}/${maxAmmo}`;
+            },
+            zombiesLeft: (count) => {
+                console.log('Zombies left:', count);
+            },
+            reloadStatus: (isReloading, timeLeft) => {
+                if (isReloading) {
+                    gameStatus.innerHTML += ` | RELOADING... ${Math.ceil(timeLeft/1000)}s`;
+                }
+            }
         };
         
-        console.warn = function(...args) {
-            originalWarn.apply(console, args);
-            addToConsole('WARN: ' + args.join(' '), '#ff0');
-        };
+        // Initial status
+        gameStatus.innerHTML = 'Game Starting...';
         
-        console.log('Starting debug test...');
+        // Add some helpful instructions
+        setTimeout(() => {
+            console.log('🎮 GAME LOADED - DEBUG MODE ACTIVE');
+            console.log('📝 Watch the console for detailed shooting and collision logs');
+            console.log('🎯 Try shooting at zombies and observe the debug output');
+        }, 1000);
     </script>
-    
-    <script src="node_modules/phaser/dist/phaser.min.js"></script>
-    <script type="module" src="src/main-debug.js"></script>
 </body>
 </html> 
