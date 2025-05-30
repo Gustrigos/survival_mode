@@ -167,9 +167,29 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 playerPos: { x: this.x.toFixed(2), y: this.y.toFixed(2) }
             });
             
+            // Map diagonal directions to sprite directions (we don't have diagonal sprites)
+            let spriteDirection = direction;
+            switch (direction) {
+                case 'up-left':
+                case 'up-right':
+                    spriteDirection = 'up';
+                    break;
+                case 'down-left':
+                case 'down-right':
+                    spriteDirection = 'down';
+                    break;
+                // Cardinal directions stay the same
+                case 'up':
+                case 'down':
+                case 'left':
+                case 'right':
+                    spriteDirection = direction;
+                    break;
+            }
+            
             if (this.usingSWATSprites) {
-                let frame = SWATSpriteManager.getFrameForDirection(direction);
-                if (direction === 'right') {
+                let frame = SWATSpriteManager.getFrameForDirection(spriteDirection);
+                if (spriteDirection === 'right') {
                     // Use side frame and flip horizontally
                     frame = SWATSpriteManager.getFrameForDirection('left');
                     this.setFlipX(true);
@@ -178,8 +198,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 }
                 this.setFrame(frame);
             } else {
-                // Use placeholder sprites
-                this.setTexture(`player_${direction}`);
+                // Use placeholder sprites with cardinal directions
+                this.setTexture(`player_${spriteDirection}`);
             }
         }
     }
@@ -249,7 +269,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         switch (this.direction) {
             case 'up':
                 bulletVelY = -this.bulletSpeed;
-                muzzleOffsetY = -20; // Slightly increased offset
+                muzzleOffsetY = -20;
                 break;
             case 'down':
                 bulletVelY = this.bulletSpeed;
@@ -262,6 +282,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             case 'right':
                 bulletVelX = this.bulletSpeed;
                 muzzleOffsetX = 20;
+                break;
+            case 'up-left':
+                bulletVelX = -this.bulletSpeed * 0.707; // Normalize diagonal speed
+                bulletVelY = -this.bulletSpeed * 0.707;
+                muzzleOffsetX = -14; // Diagonal offset
+                muzzleOffsetY = -14;
+                break;
+            case 'up-right':
+                bulletVelX = this.bulletSpeed * 0.707;
+                bulletVelY = -this.bulletSpeed * 0.707;
+                muzzleOffsetX = 14;
+                muzzleOffsetY = -14;
+                break;
+            case 'down-left':
+                bulletVelX = -this.bulletSpeed * 0.707;
+                bulletVelY = this.bulletSpeed * 0.707;
+                muzzleOffsetX = -14;
+                muzzleOffsetY = 14;
+                break;
+            case 'down-right':
+                bulletVelX = this.bulletSpeed * 0.707;
+                bulletVelY = this.bulletSpeed * 0.707;
+                muzzleOffsetX = 14;
+                muzzleOffsetY = 14;
                 break;
         }
         
@@ -337,11 +381,24 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             case 'down':
                 muzzleFlash.setAngle(90);
                 break;
+            case 'left':
+                muzzleFlash.setAngle(0);
+                break;
             case 'right':
                 muzzleFlash.setAngle(180);
                 break;
-            default:
-                muzzleFlash.setAngle(0);
+            case 'up-left':
+                muzzleFlash.setAngle(-45);
+                break;
+            case 'up-right':
+                muzzleFlash.setAngle(-135);
+                break;
+            case 'down-left':
+                muzzleFlash.setAngle(45);
+                break;
+            case 'down-right':
+                muzzleFlash.setAngle(135);
+                break;
         }
         
         // Animate muzzle flash: quick expansion & fade

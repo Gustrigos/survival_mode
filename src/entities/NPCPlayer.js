@@ -21,9 +21,10 @@ export class NPCPlayer extends Player {
         this.lastTargetScanTime = 0;
         this.targetScanInterval = 500; // Scan for targets every 500ms
         this.lastFollowUpdateTime = 0;
-        this.followUpdateInterval = 100; // Update follow position every 100ms
+        this.followUpdateInterval = 200; // Reduced frequency: Update follow position every 200ms (was 100ms)
         this.isFollowing = true;
         this.isDead = false; // Track death state to prevent multiple death calls
+        this.isRetreating = false; // Track if NPC is retreating due to reloading
         
         // Create name tag
         this.createNameTag();
@@ -62,6 +63,16 @@ export class NPCPlayer extends Player {
                 this.ammo = this.maxAmmo;
                 this.weapons[this.currentWeapon].ammo = this.ammo;
                 
+                // End retreat behavior when reloading finishes
+                this.isRetreating = false;
+                
+                // Restore normal name tag color
+                if (this.nameTag) {
+                    this.nameTag.clearTint();
+                }
+                
+                console.log(`${this.squadConfig.name} finished reloading and ready for combat!`);
+                
                 // DO NOT update window.gameState or window.updateUI 
                 // (that's only for the main player's HTML UI)
             }
@@ -92,28 +103,51 @@ export class NPCPlayer extends Player {
         const distanceToLeader = this.scene.player ? 
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
-        // If too far from leader, abandon combat and return to formation
+        // PRIORITY 1: If reloading, abandon everything and retreat to leader
+        if (this.isRetreating && this.isReloading) {
+            this.target = null;
+            this.isFollowing = true;
+            // Force follow behavior update every frame during retreat for responsiveness
+            this.updateFollowBehavior();
+            return; // Skip all other AI logic during retreat
+        }
+        
+        // PRIORITY 2: If too far from leader, abandon combat and return to formation
         if (distanceToLeader > this.squadConfig.maxSeparation) {
             this.target = null;
             this.isFollowing = true;
             console.log(`${this.squadConfig.name} too far from leader (${distanceToLeader.toFixed(0)}), returning to formation`);
         }
         
-        // Scan for zombie targets periodically (but only if not forced to follow)
-        if (time - this.lastTargetScanTime > this.targetScanInterval && distanceToLeader <= this.squadConfig.maxSeparation) {
+        // Scan for zombie targets periodically (but only if not retreating or forced to follow)
+        if (time - this.lastTargetScanTime > this.targetScanInterval && 
+            distanceToLeader <= this.squadConfig.maxSeparation && 
+            !this.isRetreating) {
             this.scanForTargets();
             this.lastTargetScanTime = time;
         }
         
-        // Shoot at target if we have one and not too far from leader
-        if (this.target && this.target.active && distanceToLeader <= this.squadConfig.maxSeparation) {
+        // Shoot at target if we have one and not retreating or too far from leader
+        if (this.target && this.target.active && 
+            distanceToLeader <= this.squadConfig.maxSeparation && 
+            !this.isRetreating) {
             this.aimAndShoot();
         }
         
-        // Always update follow behavior (but prioritize it when far from leader)
+        // Always update follow behavior (but prioritize it when retreating or far from leader)
         if (time - this.lastFollowUpdateTime > this.followUpdateInterval) {
             this.updateFollowBehavior();
             this.lastFollowUpdateTime = time;
+        }
+        
+        // Smart reload logic - reload proactively when safe near leader
+        if (!this.isReloading && !this.isRetreating && distanceToLeader <= 50) {
+            // If low on ammo and close to leader, reload preemptively for safety
+            const ammoPercentage = this.ammo / this.maxAmmo;
+            if (ammoPercentage <= 0.2 && !this.target) {
+                console.log(`${this.squadConfig.name} proactively reloading while safe near leader`);
+                this.reload();
+            }
         }
     }
     
@@ -138,9 +172,11 @@ export class NPCPlayer extends Player {
         if (closestZombie) {
             this.target = closestZombie;
             this.isFollowing = false; // Stop following when engaging
-        } else {
+        } else if (this.target) {
+            // Only update behavior if we previously had a target
             this.target = null;
-            this.isFollowing = true; // Resume following when no targets
+            // Don't automatically set isFollowing = true here
+            // Let the normal follow logic handle positioning
         }
     }
     
@@ -153,18 +189,27 @@ export class NPCPlayer extends Player {
         // Calculate direction to target
         const angle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
         
-        // Determine which direction to face based on angle
+        // Determine which direction to face based on angle - support 8 directions
         let direction = 'down';
         const degrees = Phaser.Math.RadToDeg(angle);
         
-        if (degrees >= -45 && degrees < 45) {
+        // Map angle ranges to 8 directions including diagonals
+        if (degrees >= -22.5 && degrees < 22.5) {
             direction = 'right';
-        } else if (degrees >= 45 && degrees < 135) {
+        } else if (degrees >= 22.5 && degrees < 67.5) {
+            direction = 'down-right';
+        } else if (degrees >= 67.5 && degrees < 112.5) {
             direction = 'down';
-        } else if (degrees >= 135 || degrees < -135) {
+        } else if (degrees >= 112.5 && degrees < 157.5) {
+            direction = 'down-left';
+        } else if (degrees >= 157.5 || degrees < -157.5) {
             direction = 'left';
-        } else {
+        } else if (degrees >= -157.5 && degrees < -112.5) {
+            direction = 'up-left';
+        } else if (degrees >= -112.5 && degrees < -67.5) {
             direction = 'up';
+        } else if (degrees >= -67.5 && degrees < -22.5) {
+            direction = 'up-right';
         }
         
         // Update NPC direction
@@ -182,28 +227,48 @@ export class NPCPlayer extends Player {
         
         // Calculate desired position based on formation offset
         const mainPlayer = this.scene.player;
-        const desiredX = mainPlayer.x + this.squadConfig.formationOffset.x;
-        const desiredY = mainPlayer.y + this.squadConfig.formationOffset.y;
+        let desiredX, desiredY;
+        
+        if (this.isRetreating) {
+            // When retreating, get much closer to leader for protection (50% closer)
+            desiredX = mainPlayer.x + (this.squadConfig.formationOffset.x * 0.5);
+            desiredY = mainPlayer.y + (this.squadConfig.formationOffset.y * 0.5);
+        } else {
+            // Normal formation position
+            desiredX = mainPlayer.x + this.squadConfig.formationOffset.x;
+            desiredY = mainPlayer.y + this.squadConfig.formationOffset.y;
+        }
         
         // Calculate distance to desired position
         const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
         const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, mainPlayer.x, mainPlayer.y);
         
+        // Create a larger "dead zone" to prevent constant micro-adjustments
+        const deadZone = this.isRetreating ? 25 : 40; // Smaller when retreating, larger when in formation
+        const followThreshold = this.squadConfig.followDistance + 20; // Add buffer to follow distance
+        
         // Determine if we should follow based on distance and combat status
-        const shouldFollow = this.isFollowing || 
-                           distanceToDesired > this.squadConfig.followDistance ||
+        const shouldFollow = this.isRetreating || // Always follow when retreating
+                           distanceToDesired > followThreshold ||
                            distanceToLeader > this.squadConfig.maxSeparation;
         
-        if (shouldFollow) {
+        // Only move if outside the dead zone AND should follow
+        if (shouldFollow && distanceToDesired > deadZone) {
             // Calculate movement direction
             const angle = Phaser.Math.Angle.Between(this.x, this.y, desiredX, desiredY);
             
-            // Adjust speed based on distance - faster when farther away
+            // Adjust speed based on distance and retreat status
             let speed = 120; // Base speed
-            if (distanceToLeader > this.squadConfig.maxSeparation) {
+            
+            if (this.isRetreating) {
+                speed = 250; // Much faster when retreating for protection!
+                console.log(`${this.squadConfig.name} retreating at high speed to leader!`);
+            } else if (distanceToLeader > this.squadConfig.maxSeparation) {
                 speed = 220; // Much faster when too far from leader
-            } else if (distanceToDesired > this.squadConfig.followDistance * 2) {
+            } else if (distanceToDesired > followThreshold * 1.5) {
                 speed = 180; // Faster when moderately far
+            } else {
+                speed = 80; // Slower when close to avoid overshooting
             }
             
             // Move towards desired position
@@ -216,28 +281,37 @@ export class NPCPlayer extends Player {
             let direction = 'down';
             const degrees = Phaser.Math.RadToDeg(angle);
             
-            if (degrees >= -45 && degrees < 45) {
+            // Map angle ranges to 8 directions including diagonals
+            if (degrees >= -22.5 && degrees < 22.5) {
                 direction = 'right';
-            } else if (degrees >= 45 && degrees < 135) {
+            } else if (degrees >= 22.5 && degrees < 67.5) {
+                direction = 'down-right';
+            } else if (degrees >= 67.5 && degrees < 112.5) {
                 direction = 'down';
-            } else if (degrees >= 135 || degrees < -135) {
+            } else if (degrees >= 112.5 && degrees < 157.5) {
+                direction = 'down-left';
+            } else if (degrees >= 157.5 || degrees < -157.5) {
                 direction = 'left';
-            } else {
+            } else if (degrees >= -157.5 && degrees < -112.5) {
+                direction = 'up-left';
+            } else if (degrees >= -112.5 && degrees < -67.5) {
                 direction = 'up';
+            } else if (degrees >= -67.5 && degrees < -22.5) {
+                direction = 'up-right';
             }
             
             this.setDirection(direction);
             this.setMoving(true);
             
-            // Only stop following when very close to desired position AND not too far from leader
-            if (distanceToDesired <= this.squadConfig.followDistance * 0.5 && 
-                distanceToLeader <= this.squadConfig.maxSeparation) {
+            // Set following flag to false when we get close enough
+            if (distanceToDesired <= deadZone) {
                 this.isFollowing = false;
             }
         } else {
-            // Stop moving when close enough and allowed to engage in combat
+            // Stop moving when in dead zone or when close enough
             this.setVelocity(0, 0);
             this.setMoving(false);
+            this.isFollowing = false; // Clear following flag to prevent constant re-triggering
         }
     }
     
@@ -391,6 +465,30 @@ export class NPCPlayer extends Player {
                 bulletVelX = this.bulletSpeed;
                 muzzleOffsetX = 20;
                 break;
+            case 'up-left':
+                bulletVelX = -this.bulletSpeed * 0.707; // Normalize diagonal speed
+                bulletVelY = -this.bulletSpeed * 0.707;
+                muzzleOffsetX = -14; // Diagonal offset
+                muzzleOffsetY = -14;
+                break;
+            case 'up-right':
+                bulletVelX = this.bulletSpeed * 0.707;
+                bulletVelY = -this.bulletSpeed * 0.707;
+                muzzleOffsetX = 14;
+                muzzleOffsetY = -14;
+                break;
+            case 'down-left':
+                bulletVelX = -this.bulletSpeed * 0.707;
+                bulletVelY = this.bulletSpeed * 0.707;
+                muzzleOffsetX = -14;
+                muzzleOffsetY = 14;
+                break;
+            case 'down-right':
+                bulletVelX = this.bulletSpeed * 0.707;
+                bulletVelY = this.bulletSpeed * 0.707;
+                muzzleOffsetX = 14;
+                muzzleOffsetY = 14;
+                break;
         }
         
         // Create bullet starting from NPC's collision box center
@@ -423,14 +521,27 @@ export class NPCPlayer extends Player {
         this.lastShotTime = currentTime;
     }
     
-    // Override reload method to prevent NPCs from updating main player's reload UI
+    // Override reload method to trigger retreat behavior during vulnerable reloading
     reload() {
         if (this.isReloading || this.ammo >= this.maxAmmo) {
             return;
         }
         
+        // Start reloading
         this.isReloading = true;
         this.reloadStartTime = this.scene.time.now;
+        
+        // Trigger retreat behavior - NPC becomes vulnerable and seeks leader protection
+        this.isRetreating = true;
+        this.target = null; // Abandon current target
+        this.isFollowing = true; // Force follow mode
+        
+        console.log(`${this.squadConfig.name} is reloading and retreating to leader for protection!`);
+        
+        // Visual indication of retreating (subtle name tag color change)
+        if (this.nameTag) {
+            this.nameTag.setTint(0xffaa00); // Orange tint during retreat
+        }
         
         // DO NOT update window.gameState.isReloading 
         // (that's only for the main player's HTML UI)

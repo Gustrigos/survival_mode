@@ -831,11 +831,23 @@ export class GameScene extends Phaser.Scene {
         if (velocityX !== 0 || velocityY !== 0) {
             player.setMoving(true);
             
-            // Set direction based on movement
-            if (Math.abs(velocityX) > Math.abs(velocityY)) {
-                newDirection = velocityX > 0 ? 'right' : 'left';
-            } else {
-                newDirection = velocityY > 0 ? 'down' : 'up';
+            // Set direction based on movement - support 8 directions including diagonals
+            if (velocityX > 0 && velocityY < 0) {
+                newDirection = 'up-right';
+            } else if (velocityX > 0 && velocityY > 0) {
+                newDirection = 'down-right';
+            } else if (velocityX < 0 && velocityY < 0) {
+                newDirection = 'up-left';
+            } else if (velocityX < 0 && velocityY > 0) {
+                newDirection = 'down-left';
+            } else if (velocityX > 0) {
+                newDirection = 'right';
+            } else if (velocityX < 0) {
+                newDirection = 'left';
+            } else if (velocityY < 0) {
+                newDirection = 'up';
+            } else if (velocityY > 0) {
+                newDirection = 'down';
             }
             player.setDirection(newDirection);
         } else {
@@ -1492,28 +1504,58 @@ export class GameScene extends Phaser.Scene {
 
     createSquad() {
         // Create NPC squad members with different configurations
-        console.log('Creating squad members...');
+        console.log('Creating full 6-person squad (5 NPCs + 1 Leader)...');
         
         // Squad member configurations
         const squadConfigs = [
+            // Front flankers - advance scouts
+            {
+                name: 'Charlie',
+                color: 0x0099ff, // Blue
+                formationOffset: { x: -60, y: -20 }, // Front-left flanker
+                weapon: 'pistol',
+                aggroRange: 280,
+                followDistance: 60,
+                maxSeparation: 220
+            },
+            {
+                name: 'Delta', 
+                color: 0xff3333, // Red
+                formationOffset: { x: 60, y: -20 }, // Front-right flanker
+                weapon: 'machineGun',
+                aggroRange: 320,
+                followDistance: 60,
+                maxSeparation: 220
+            },
+            // Mid-line support (original positions)
             {
                 name: 'Alpha',
                 color: 0x00ff00, // Green
-                formationOffset: { x: -50, y: 40 }, // Tighter left-back formation
+                formationOffset: { x: -50, y: 40 }, // Left-back formation
                 weapon: 'pistol',
                 aggroRange: 250,
-                followDistance: 60, // Closer follow distance
-                maxSeparation: 200 // Max distance before abandoning combat to follow
+                followDistance: 60,
+                maxSeparation: 200
             },
             {
                 name: 'Bravo',
                 color: 0xff8800, // Orange
-                formationOffset: { x: 50, y: 40 }, // Tighter right-back formation
+                formationOffset: { x: 50, y: 40 }, // Right-back formation
                 weapon: 'machineGun',
                 aggroRange: 300,
-                followDistance: 60, // Closer follow distance
-                maxSeparation: 200 // Max distance before abandoning combat to follow
-            }
+                followDistance: 60,
+                maxSeparation: 200
+            },
+            // // Rear guard - overwatch
+            // {
+            //     name: 'Echo',
+            //     color: 0xaa44ff, // Purple
+            //     formationOffset: { x: 0, y: 60 }, // Direct rear guard
+            //     weapon: 'pistol',
+            //     aggroRange: 270,
+            //     followDistance: 65,
+            //     maxSeparation: 210
+            // }
         ];
         
         // Create each squad member
@@ -1532,7 +1574,8 @@ export class GameScene extends Phaser.Scene {
             }
         });
         
-        console.log(`Squad creation complete. Total members: ${this.squadMembers.children.size}`);
+        console.log(`Full squad creation complete! Total: ${this.squadMembers.children.size} NPCs + 1 Leader = ${this.squadMembers.children.size + 1} total`);
+        console.log('Squad formation: Charlie/Delta (front scouts), Alpha/Bravo (mid-line), Echo (rear guard)');
     }
 
     updateHTMLSquadStatus() {
