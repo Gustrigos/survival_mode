@@ -40,8 +40,8 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             
             // DYNAMIC collision box based on actual visual bounds
             const bounds = this.getBounds();
-            const collisionWidth = bounds.width * 3.0;   // 300% of visual bounds - much larger for easy targeting  
-            const collisionHeight = bounds.height * 3.5; // 350% of visual bounds - extra tall head-to-toe coverage
+            const collisionWidth = bounds.width * 3.5;   // 300% of visual bounds - much larger for easy targeting  
+            const collisionHeight = bounds.height * 5; // 350% of visual bounds - extra tall head-to-toe coverage
             
             // Set body size and center it (true flag centers automatically)
             this.body.setSize(collisionWidth, collisionHeight, true);
