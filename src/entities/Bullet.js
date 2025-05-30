@@ -125,10 +125,13 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         // Disable physics body and hide sprite
         this.setActive(false);
         this.setVisible(false);
-        this.body.enable = false;
         
-        // Reset velocity to stop any movement
-        this.setVelocity(0, 0);
+        // Check if body exists before trying to disable it (it may be destroyed during scene shutdown)
+        if (this.body) {
+            this.body.enable = false;
+            // Reset velocity to stop any movement
+            this.setVelocity(0, 0);
+        }
     }
     
     destroy() {

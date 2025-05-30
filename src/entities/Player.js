@@ -203,12 +203,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         const currentTime = this.scene.time.now;
         
         if (this.isReloading || this.ammo <= 0 || currentTime - this.lastShotTime < this.fireRate) {
-            console.log('🚫 Shoot blocked:', {
-                isReloading: this.isReloading,
-                ammo: this.ammo,
-                timeSinceLastShot: currentTime - this.lastShotTime,
-                fireRate: this.fireRate
-            });
             return;
         }
         
@@ -318,8 +312,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         
         this.lastShotTime = currentTime;
         
-        // Screen shake
-        this.scene.cameras.main.shake(100, 0.01);
+        // Removed screen shake effect to reduce annoying recoil
     }
     
     createMuzzleFlash(offsetX, offsetY) {

@@ -1,4 +1,5 @@
 import { Player } from '../entities/Player.js';
+import { NPCPlayer } from '../entities/NPCPlayer.js';
 import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
@@ -92,6 +93,12 @@ export class GameScene extends Phaser.Scene {
             runChildUpdate: true
         });
         
+        // Squad members group for NPCs
+        this.squadMembers = this.physics.add.group({
+            classType: NPCPlayer,
+            runChildUpdate: true
+        });
+        
         // Static structures (helicopter, buildings, wreckage, etc.) should live in a static physics group.
         // Using a dynamic group for GameObjects that already have static bodies causes runtime errors
         // when the group tries to apply dynamic-body callbacks. Switching to a static group fixes this.
@@ -155,6 +162,12 @@ export class GameScene extends Phaser.Scene {
             
             console.log('Created minimal fallback player');
         }
+        
+        // Create main player name tag
+        this.createMainPlayerNameTag();
+        
+        // Create squad members
+        this.createSquad();
         
         // Camera setup - follow player with bounds
         this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
@@ -728,6 +741,14 @@ export class GameScene extends Phaser.Scene {
         // Update player
         this.player.update(time, delta);
         
+        // Update main player name tag position
+        if (this.player.nameTag) {
+            this.player.nameTag.x = this.player.x;
+            this.player.nameTag.y = this.player.y - 40;
+        }
+        
+        // Removed main player health bar updates - using UI panel instead
+        
         // Update crash site structures (if any have special behavior)
         // Currently no special updates needed for crash site structures
         
@@ -748,6 +769,9 @@ export class GameScene extends Phaser.Scene {
         
         // Update debug text
         this.updateDebugText();
+        
+        // Update HTML squad status
+        this.updateHTMLSquadStatus();
     }
     
     handleInput() {
@@ -802,14 +826,6 @@ export class GameScene extends Phaser.Scene {
         
         // Enhanced shooting debug
         if (this.wasd.SPACE.isDown) {
-            console.log('🎯 SHOOTING INPUT:', {
-                pressedKeys,
-                currentDirection: player.direction,
-                newDirection,
-                velocity: { x: velocityX.toFixed(1), y: velocityY.toFixed(1) },
-                isMoving: velocityX !== 0 || velocityY !== 0,
-                playerPos: { x: player.x.toFixed(2), y: player.y.toFixed(2) }
-            });
             this.player.shoot();
         }
         
@@ -934,8 +950,7 @@ export class GameScene extends Phaser.Scene {
         // Remove bullet properly and disable its physics body
         bullet.deactivate();
         
-        // Screen shake
-        this.cameras.main.shake(50, 0.005);
+        // Removed screen shake effect to reduce annoying recoil
     }
     
     bulletHitStructure(bullet, structure) {
@@ -996,8 +1011,13 @@ export class GameScene extends Phaser.Scene {
                 }
             });
             
-            if (player.health <= 0) {
+            // Only trigger game over if the MAIN player dies, not squad members
+            if (player.health <= 0 && !player.isNPC) {
                 this.gameOver();
+            } else if (player.health <= 0 && player.isNPC) {
+                // Squad member died - log it but don't end the game
+                console.log(`Squad member '${player.squadConfig.name}' has been eliminated!`);
+                // The NPCPlayer.destroy() method will handle cleanup
             }
         }
     }
@@ -1109,6 +1129,11 @@ export class GameScene extends Phaser.Scene {
         // Sort sprites by Y position for Pokemon-style layering
         this.player.setDepth(this.player.y);
         
+        // Update squad members depth
+        this.squadMembers.children.entries.forEach(squadMember => {
+            squadMember.setDepth(squadMember.y);
+        });
+        
         this.zombies.children.entries.forEach(zombie => {
             zombie.setDepth(zombie.y);
         });
@@ -1142,11 +1167,17 @@ export class GameScene extends Phaser.Scene {
         // Player vs zombies
         this.physics.add.overlap(this.player, this.zombies, this.playerHitZombie, null, this);
         
+        // Squad members vs zombies
+        this.physics.add.overlap(this.squadMembers, this.zombies, this.playerHitZombie, null, this);
+        
         // Bullets vs zombies
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
         
         // Player vs structures
         this.physics.add.collider(this.player, this.structures);
+        
+        // Squad members vs structures
+        this.physics.add.collider(this.squadMembers, this.structures);
         
         // Bullets vs structures
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
@@ -1154,18 +1185,18 @@ export class GameScene extends Phaser.Scene {
         // Zombies vs structures
         this.physics.add.collider(this.zombies, this.structures, this.zombieHitStructure, null, this);
         
-        console.log('Collisions set up with structures');
+        console.log('Collisions set up with structures and squad members');
     }
     
     updateDebugText() {
         if (this.debugText) {
-            const playerPos = this.player ? `${this.player.x}, ${this.player.y}` : 'No player';
             const zombieCount = this.zombies ? this.zombies.children.size : 0;
+            const squadCount = this.squadMembers ? this.squadMembers.children.size : 0;
             this.debugText.setText([
-                `Player: ${playerPos}`,
                 `Zombies: ${zombieCount}`,
-                `Camera: ${this.cameras.main.scrollX}, ${this.cameras.main.scrollY}`,
-                `World: ${this.physics.world.bounds.width}x${this.physics.world.bounds.height}`
+                `Squad Members: ${squadCount}`,
+                `Wave: ${window.gameState.wave || 1}`,
+                `Score: ${window.gameState.score || 0}`
             ].join('\n'));
         }
     }
@@ -1275,11 +1306,9 @@ export class GameScene extends Phaser.Scene {
                         // Use SpriteScaler consistently like we did for helicopter
                         SpriteScaler.autoScale(puff, 'smoke_puff', { maintainAspectRatio: true });
                         
-                        console.log('✅ Using smoke_puff.png with SpriteScaler:', puff.displayWidth, 'x', puff.displayHeight);
                     } else {
                         // Simple fallback - very small circle
                         puff = this.add.circle(x + offset.dx, y + offset.dy, 3, 0x666666);
-                        console.log('⚠️ smoke_puff.png not found, using 3px fallback');
                     }
                     
                     puff.setDepth(y + 100);
@@ -1376,5 +1405,100 @@ export class GameScene extends Phaser.Scene {
         this.player.setMoving = () => {};
         
         console.log('Fallback player created');
+    }
+
+    createMainPlayerNameTag() {
+        // Create name tag for main player (different color to distinguish from NPCs)
+        if (this.player && !this.player.isNPC) {
+            this.player.nameTag = this.add.text(this.player.x, this.player.y - 40, 'LEADER', {
+                fontSize: '12px',
+                fill: '#00BFFF', // Blue color for main player
+                fontFamily: 'Courier New',
+                stroke: '#000000',
+                strokeThickness: 2,
+                alpha: 0.9
+            });
+            this.player.nameTag.setOrigin(0.5);
+            this.player.nameTag.setDepth(2000); // High depth to stay above everything
+            
+            // Removed above-character health bar - using UI panel instead
+            
+            console.log('Main player name tag created');
+        }
+    }
+
+    createSquad() {
+        // Create NPC squad members with different configurations
+        console.log('Creating squad members...');
+        
+        // Squad member configurations
+        const squadConfigs = [
+            {
+                name: 'Alpha',
+                color: 0x00ff00, // Green
+                formationOffset: { x: -80, y: 60 }, // Left-back formation
+                weapon: 'pistol',
+                aggroRange: 250
+            },
+            {
+                name: 'Bravo',
+                color: 0xff8800, // Orange
+                formationOffset: { x: 80, y: 60 }, // Right-back formation
+                weapon: 'machineGun',
+                aggroRange: 300
+            }
+        ];
+        
+        // Create each squad member
+        squadConfigs.forEach((config, index) => {
+            try {
+                // Start squad members near the main player
+                const startX = this.player.x + config.formationOffset.x;
+                const startY = this.player.y + config.formationOffset.y;
+                
+                const squadMember = new NPCPlayer(this, startX, startY, config);
+                this.squadMembers.add(squadMember);
+                
+                console.log(`Squad member '${config.name}' created at position (${startX}, ${startY})`);
+            } catch (error) {
+                console.error(`Error creating squad member '${config.name}':`, error);
+            }
+        });
+        
+        console.log(`Squad creation complete. Total members: ${this.squadMembers.children.size}`);
+    }
+
+    updateHTMLSquadStatus() {
+        const squadMembersDiv = document.getElementById('squad-members');
+        if (!squadMembersDiv) return; // HTML element not found
+        
+        // Clear existing content
+        squadMembersDiv.innerHTML = '';
+        
+        // Add each squad member to HTML
+        if (this.squadMembers) {
+            this.squadMembers.children.entries.forEach((squadMember, index) => {
+                if (squadMember.active) {
+                    const memberDiv = document.createElement('div');
+                    memberDiv.className = 'squad-member';
+                    
+                    const name = squadMember.squadConfig.name;
+                    const health = Math.ceil(squadMember.health);
+                    const maxHealth = squadMember.maxHealth;
+                    const healthPercent = health / maxHealth;
+                    const color = `#${squadMember.squadConfig.color.toString(16).padStart(6, '0')}`;
+                    
+                    memberDiv.innerHTML = `
+                        <span style="color: ${color}; font-weight: bold;">${name}</span>
+                        <div class="squad-health-bar">
+                            <div class="squad-health-fill" style="width: ${healthPercent * 100}%;"></div>
+                        </div>
+                        <span>${health}/${maxHealth}</span>
+                    `;
+                    
+                    squadMembersDiv.appendChild(memberDiv);
+                }
+            });
+        }
     }
 } 

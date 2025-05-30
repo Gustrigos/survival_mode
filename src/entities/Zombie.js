@@ -93,12 +93,37 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     }
     
     moveTowardsPlayer() {
-        const player = this.scene.player;
-        if (!player) return;
+        // Find the closest target (main player or any squad member)
+        let closestTarget = null;
+        let closestDistance = Infinity;
         
-        // Calculate direction to player
-        const dx = player.x - this.x;
-        const dy = player.y - this.y;
+        // Check main player
+        if (this.scene.player && this.scene.player.active) {
+            const distance = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
+            if (distance < closestDistance) {
+                closestTarget = this.scene.player;
+                closestDistance = distance;
+            }
+        }
+        
+        // Check all squad members
+        if (this.scene.squadMembers) {
+            this.scene.squadMembers.children.entries.forEach(squadMember => {
+                if (squadMember.active) {
+                    const distance = Phaser.Math.Distance.Between(this.x, this.y, squadMember.x, squadMember.y);
+                    if (distance < closestDistance) {
+                        closestTarget = squadMember;
+                        closestDistance = distance;
+                    }
+                }
+            });
+        }
+        
+        if (!closestTarget) return;
+        
+        // Calculate direction to closest target
+        const dx = closestTarget.x - this.x;
+        const dy = closestTarget.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance > 0) {
@@ -106,7 +131,7 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             const normalizedX = (dx / distance) * this.speed;
             const normalizedY = (dy / distance) * this.speed;
             
-            // Add some randomness to movement
+            // Add some randomness to movement for more natural behavior
             const randomX = (Math.random() - 0.5) * 20;
             const randomY = (Math.random() - 0.5) * 20;
             
@@ -176,10 +201,35 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             this.clearTint();
         });
         
-        // Knockback effect
-        const player = this.scene.player;
-        if (player) {
-            const angle = Phaser.Math.Angle.Between(player.x, player.y, this.x, this.y);
+        // Knockback effect - find closest target for knockback direction
+        let closestTarget = null;
+        let closestDistance = Infinity;
+        
+        // Check main player
+        if (this.scene.player && this.scene.player.active) {
+            const distance = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
+            if (distance < closestDistance) {
+                closestTarget = this.scene.player;
+                closestDistance = distance;
+            }
+        }
+        
+        // Check all squad members
+        if (this.scene.squadMembers) {
+            this.scene.squadMembers.children.entries.forEach(squadMember => {
+                if (squadMember.active) {
+                    const distance = Phaser.Math.Distance.Between(this.x, this.y, squadMember.x, squadMember.y);
+                    if (distance < closestDistance) {
+                        closestTarget = squadMember;
+                        closestDistance = distance;
+                    }
+                }
+            });
+        }
+        
+        // Apply knockback away from closest target
+        if (closestTarget) {
+            const angle = Phaser.Math.Angle.Between(closestTarget.x, closestTarget.y, this.x, this.y);
             this.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
         }
         
@@ -225,8 +275,7 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             });
         }
         
-        // Screen shake for dramatic effect
-        this.scene.cameras.main.shake(50, 0.005);
+        // Removed screen shake for less annoying visual effects
     }
     
     canAttack() {

@@ -91,6 +91,47 @@
         border: 2px solid #27ae60;
         pointer-events: none; /* Prevent UI from blocking game input */
       }
+      
+      #squad-status {
+        position: absolute;
+        top: 170px;
+        left: 20px;
+        color: white;
+        font-size: 14px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
+        border-radius: 10px;
+        border: 2px solid #e74c3c;
+        pointer-events: none;
+        width: 200px;
+      }
+      
+      .squad-member {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 5px 0;
+        font-size: 12px;
+      }
+      
+      .squad-health-bar {
+        width: 80px;
+        height: 12px;
+        background: #34495e;
+        border: 1px solid #2c3e50;
+        border-radius: 6px;
+        overflow: hidden;
+        margin: 0 5px;
+      }
+      
+      .squad-health-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #e74c3c, #c0392b);
+        transition: width 0.3s ease;
+        border-radius: 5px;
+      }
     </style>
   </head>
   <body>
@@ -106,6 +147,11 @@
         <div class="ui-fill ammo-fill" id="ammo-bar" style="width: 100%;"></div>
       </div>
       <div id="reload-status"></div>
+    </div>
+    
+    <div id="squad-status">
+      <div><strong>Squad Status:</strong></div>
+      <div id="squad-members"></div>
     </div>
     
     <div id="score">
