@@ -74,6 +74,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         // Set up physics body - make it cover the full visible sprite
         this.setCollideWorldBounds(true);
         
+        // Set physics mass for realistic collisions
+        this.body.setMass(1.5); // Players are heavier than zombies
+        this.body.setDrag(300); // Add drag to prevent sliding after collisions
+        
         if (this.usingSWATSprites) {
             this.setScale(0.1); // Scale down large SWAT sprites (341x512 -> ~34x51)
             

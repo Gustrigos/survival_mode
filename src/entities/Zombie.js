@@ -25,6 +25,10 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.attackCooldown = 1000; // 1 second between attacks
         this.lastAttackTime = 0;
         
+        // Knockback properties
+        this.isKnockedBack = false;
+        this.knockbackEndTime = 0;
+        
         // Animation
         this.walkAnimSpeed = 600; // Slower than player
         this.lastAnimTime = 0;
@@ -32,6 +36,11 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         // Set up physics body - make it cover the full visible sprite, same as player
         this.setCollideWorldBounds(true);
+        
+        // Set physics mass for realistic collisions
+        this.body.setMass(0.9); // Slightly heavier than before for more realistic knockback
+        this.body.setDrag(150); // Moderate drag for natural deceleration
+        this.body.setBounce(0.2); // Reduced bounce for less chaotic physics
         
         this.usingSheet = useSheet;
         if (this.usingSheet) {
@@ -79,14 +88,32 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     }
     
     update(time, delta) {
-        // Move towards player
-        this.moveTowardsPlayer();
+        // Check if knockback period has ended
+        if (this.isKnockedBack && time > this.knockbackEndTime) {
+            this.isKnockedBack = false;
+            console.log('✅ Zombie knockback ended, resuming AI movement');
+        }
+        
+        // Gradual velocity reduction during knockback for more natural physics
+        if (this.isKnockedBack) {
+            const currentVelocity = Math.sqrt(this.body.velocity.x ** 2 + this.body.velocity.y ** 2);
+            if (currentVelocity > 30) { // Still moving significantly
+                // Gradually reduce velocity by 8% each frame
+                this.body.velocity.x *= 0.92;
+                this.body.velocity.y *= 0.92;
+            }
+        }
+        
+        // Only move towards player if not currently knocked back
+        if (!this.isKnockedBack) {
+            this.moveTowardsPlayer();
+        }
         
         // Update animation
         this.updateAnimation(time);
         
-        // Occasionally change direction for more natural movement
-        if (time - this.lastDirectionChange > this.directionChangeInterval) {
+        // Occasionally change direction for more natural movement (only if not knocked back)
+        if (!this.isKnockedBack && time - this.lastDirectionChange > this.directionChangeInterval) {
             this.addRandomMovement();
             this.lastDirectionChange = time;
         }
@@ -195,13 +222,19 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     takeDamage(amount) {
         this.health -= amount;
         
-        // Visual feedback for damage
-        this.setTint(0xff0000); // Red tint
-        this.scene.time.delayedCall(100, () => {
-            this.clearTint();
-        });
+        // Visual feedback for damage (separate from knockback tint)
+        if (!this.isKnockedBack) {
+            // Only apply damage tint if not already showing knockback tint
+            this.setTint(0xff0000); // Red tint
+            this.scene.time.delayedCall(100, () => {
+                if (this.active) {
+                    this.clearTint();
+                }
+            });
+        }
         
-        // Knockback effect - find closest target for knockback direction
+        // Reduced knockback effect since bullets now provide their own knockback
+        // Only apply minor knockback to avoid conflicting with bullet physics
         let closestTarget = null;
         let closestDistance = Infinity;
         
@@ -227,10 +260,11 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             });
         }
         
-        // Apply knockback away from closest target
-        if (closestTarget) {
+        // Apply lighter knockback away from closest target (reduced from 200 to 80)
+        // Only apply if very close and not already being knocked back by bullets
+        if (closestTarget && closestDistance < 100 && !this.isKnockedBack) {
             const angle = Phaser.Math.Angle.Between(closestTarget.x, closestTarget.y, this.x, this.y);
-            this.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
+            this.setVelocity(Math.cos(angle) * 80, Math.sin(angle) * 80);
         }
         
         // Death
@@ -302,6 +336,37 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             duration: 100,
             yoyo: true,
             ease: 'Power2'
+        });
+    }
+    
+    // Apply knockback effect (called when hit by bullets)
+    applyKnockback(sourceX, sourceY, force = 180, duration = 400) {
+        if (this.isKnockedBack) return; // Already being knocked back
+        
+        // Calculate knockback direction away from source
+        const angle = Phaser.Math.Angle.Between(sourceX, sourceY, this.x, this.y);
+        const velocityX = Math.cos(angle) * force;
+        const velocityY = Math.sin(angle) * force;
+        
+        // Apply knockback
+        this.setVelocity(velocityX, velocityY);
+        this.isKnockedBack = true;
+        this.knockbackEndTime = this.scene.time.now + duration;
+        
+        console.log(`🔥 ZOMBIE KNOCKBACK APPLIED:`, {
+            force: force,
+            duration: duration + 'ms',
+            velocity: { x: velocityX.toFixed(1), y: velocityY.toFixed(1) },
+            position: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
+            endTime: this.knockbackEndTime
+        });
+        
+        // More subtle visual feedback
+        this.setTint(0xff6666); // Lighter red tint
+        this.scene.time.delayedCall(120, () => { // Shorter duration
+            if (this.active) {
+                this.clearTint();
+            }
         });
     }
 } 

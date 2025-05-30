@@ -956,6 +956,12 @@ export class GameScene extends Phaser.Scene {
         // Create blood splat at zombie's center for better visual feedback
         this.createBloodSplat(zombie.body.center.x, zombie.body.center.y);
         
+        // Apply bullet knockback using zombie's new knockback system
+        if (bullet.body && zombie.body && zombie.applyKnockback) {
+            // Use bullet position as source of knockback with more realistic force
+            zombie.applyKnockback(bullet.x, bullet.y, 180, 400); // Reduced force and duration for realism
+        }
+        
         // Damage zombie
         const killed = zombie.takeDamage(this.player.damage);
         
@@ -1209,28 +1215,34 @@ export class GameScene extends Phaser.Scene {
     }
     
     setupCollisions() {
-        // Player vs zombies
+        // Damage-based overlaps (existing)
         this.physics.add.overlap(this.player, this.zombies, this.playerHitZombie, null, this);
-        
-        // Squad members vs zombies
         this.physics.add.overlap(this.squadMembers, this.zombies, this.playerHitZombie, null, this);
-        
-        // Bullets vs zombies
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
-        
-        // Player vs structures
-        this.physics.add.collider(this.player, this.structures);
-        
-        // Squad members vs structures
-        this.physics.add.collider(this.squadMembers, this.structures);
-        
-        // Bullets vs structures
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
         
-        // Zombies vs structures
+        // Solid collisions with structures (existing)
+        this.physics.add.collider(this.player, this.structures);
+        this.physics.add.collider(this.squadMembers, this.structures);
         this.physics.add.collider(this.zombies, this.structures, this.zombieHitStructure, null, this);
         
-        console.log('Collisions set up with structures and squad members');
+        // NEW: Solid entity-to-entity collisions (entities can't pass through each other)
+        // Player vs Squad Members - solid collision
+        this.physics.add.collider(this.player, this.squadMembers);
+        
+        // Player vs Zombies - solid collision (in addition to damage overlap)
+        this.physics.add.collider(this.player, this.zombies);
+        
+        // Squad Members vs Squad Members - solid collision (NPCs can't pass through each other)
+        this.physics.add.collider(this.squadMembers, this.squadMembers);
+        
+        // Squad Members vs Zombies - solid collision (in addition to damage overlap)
+        this.physics.add.collider(this.squadMembers, this.zombies);
+        
+        // Zombies vs Zombies - solid collision (zombies can't pass through each other)
+        this.physics.add.collider(this.zombies, this.zombies);
+        
+        console.log('Collisions set up with structures, squad members, and solid entity physics');
     }
     
     updateDebugText() {

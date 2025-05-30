@@ -26,6 +26,10 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         // Disable physics body until fired to prevent stray collisions
         this.body.enable = false;
         
+        // Set minimal mass for bullets
+        this.body.setMass(0.1); // Very light so they don't push entities around
+        this.body.setDrag(0); // No drag for bullets
+        
         console.log('Bullet created with texture:', this.texture.key);
     }
     
