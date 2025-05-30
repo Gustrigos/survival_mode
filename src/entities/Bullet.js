@@ -76,19 +76,6 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         // Only update if active
         if (!this.active) return;
         
-        // Debug bullet movement every 100ms to avoid spam
-        if (time % 100 < 16) { // Roughly every 100ms (accounting for frame time)
-            console.log('🚀 BULLET UPDATE:', {
-                pos: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
-                vel: { x: this.body.velocity.x, y: this.body.velocity.y },
-                timeAlive: (time - this.startTime).toFixed(0) + 'ms',
-                lifespan: this.lifespan + 'ms',
-                worldBounds: {
-                    inBounds: this.x >= 0 && this.x <= 2048 && this.y >= 0 && this.y <= 1536
-                }
-            });
-        }
-        
         // Check if bullet should be destroyed
         if (time - this.startTime > this.lifespan) {
             console.log('⏰ BULLET EXPIRED (lifespan):', {
@@ -101,11 +88,6 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         
         // Check if bullet is out of world bounds
         if (this.x < 0 || this.x > 2048 || this.y < 0 || this.y > 1536) {
-            console.log('🌍 BULLET OUT OF BOUNDS:', {
-                pos: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
-                worldBounds: '0,0 to 2048,1536',
-                timeAlive: (time - this.startTime).toFixed(0) + 'ms'
-            });
             this.deactivate();
         }
     }

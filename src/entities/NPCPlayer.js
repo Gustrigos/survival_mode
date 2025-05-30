@@ -9,7 +9,8 @@ export class NPCPlayer extends Player {
         this.squadConfig = {
             name: squadConfig.name || 'Alpha',
             color: squadConfig.color || 0x00ff00, // Green for NPCs
-            followDistance: squadConfig.followDistance || 100, // Distance to maintain from main player
+            followDistance: squadConfig.followDistance || 60, // Distance to maintain from formation position
+            maxSeparation: squadConfig.maxSeparation || 200, // Max distance from leader before abandoning combat
             formationOffset: squadConfig.formationOffset || { x: 0, y: 0 }, // Formation position relative to leader
             aggroRange: squadConfig.aggroRange || 300, // Range to detect and shoot zombies
             ...squadConfig
@@ -22,6 +23,7 @@ export class NPCPlayer extends Player {
         this.lastFollowUpdateTime = 0;
         this.followUpdateInterval = 100; // Update follow position every 100ms
         this.isFollowing = true;
+        this.isDead = false; // Track death state to prevent multiple death calls
         
         // Create name tag
         this.createNameTag();
@@ -86,18 +88,29 @@ export class NPCPlayer extends Player {
     }
     
     updateAI(time, delta) {
-        // Scan for zombie targets periodically
-        if (time - this.lastTargetScanTime > this.targetScanInterval) {
+        // Check if we're too far from the main player (priority override)
+        const distanceToLeader = this.scene.player ? 
+            Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
+        
+        // If too far from leader, abandon combat and return to formation
+        if (distanceToLeader > this.squadConfig.maxSeparation) {
+            this.target = null;
+            this.isFollowing = true;
+            console.log(`${this.squadConfig.name} too far from leader (${distanceToLeader.toFixed(0)}), returning to formation`);
+        }
+        
+        // Scan for zombie targets periodically (but only if not forced to follow)
+        if (time - this.lastTargetScanTime > this.targetScanInterval && distanceToLeader <= this.squadConfig.maxSeparation) {
             this.scanForTargets();
             this.lastTargetScanTime = time;
         }
         
-        // Shoot at target if we have one
-        if (this.target && this.target.active) {
+        // Shoot at target if we have one and not too far from leader
+        if (this.target && this.target.active && distanceToLeader <= this.squadConfig.maxSeparation) {
             this.aimAndShoot();
         }
         
-        // Follow main player if not engaged in combat or if target is far
+        // Always update follow behavior (but prioritize it when far from leader)
         if (time - this.lastFollowUpdateTime > this.followUpdateInterval) {
             this.updateFollowBehavior();
             this.lastFollowUpdateTime = time;
@@ -165,7 +178,7 @@ export class NPCPlayer extends Player {
     }
     
     updateFollowBehavior() {
-        if (!this.isFollowing || !this.scene.player) return;
+        if (!this.scene.player) return;
         
         // Calculate desired position based on formation offset
         const mainPlayer = this.scene.player;
@@ -174,14 +187,26 @@ export class NPCPlayer extends Player {
         
         // Calculate distance to desired position
         const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
+        const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, mainPlayer.x, mainPlayer.y);
         
-        // Only move if we're too far from desired position
-        if (distanceToDesired > this.squadConfig.followDistance) {
+        // Determine if we should follow based on distance and combat status
+        const shouldFollow = this.isFollowing || 
+                           distanceToDesired > this.squadConfig.followDistance ||
+                           distanceToLeader > this.squadConfig.maxSeparation;
+        
+        if (shouldFollow) {
             // Calculate movement direction
             const angle = Phaser.Math.Angle.Between(this.x, this.y, desiredX, desiredY);
             
+            // Adjust speed based on distance - faster when farther away
+            let speed = 120; // Base speed
+            if (distanceToLeader > this.squadConfig.maxSeparation) {
+                speed = 220; // Much faster when too far from leader
+            } else if (distanceToDesired > this.squadConfig.followDistance * 2) {
+                speed = 180; // Faster when moderately far
+            }
+            
             // Move towards desired position
-            const speed = 150; // Slightly slower than player for more natural following
             const velocityX = Math.cos(angle) * speed;
             const velocityY = Math.sin(angle) * speed;
             
@@ -203,8 +228,14 @@ export class NPCPlayer extends Player {
             
             this.setDirection(direction);
             this.setMoving(true);
+            
+            // Only stop following when very close to desired position AND not too far from leader
+            if (distanceToDesired <= this.squadConfig.followDistance * 0.5 && 
+                distanceToLeader <= this.squadConfig.maxSeparation) {
+                this.isFollowing = false;
+            }
         } else {
-            // Stop moving when close enough to desired position
+            // Stop moving when close enough and allowed to engage in combat
             this.setVelocity(0, 0);
             this.setMoving(false);
         }
@@ -242,7 +273,87 @@ export class NPCPlayer extends Player {
             });
         }
         
-        return true;
+        // Check for death
+        if (this.health <= 0) {
+            this.die();
+            return true; // NPC was killed
+        }
+        
+        return false; // NPC was damaged but not killed
+    }
+    
+    // Death handling for NPCs
+    die() {
+        // Prevent multiple death calls
+        if (this.isDead || !this.active) {
+            return;
+        }
+        this.isDead = true;
+        
+        // Track this death for HUD display
+        if (this.scene.trackDestroyedSquadMember) {
+            this.scene.trackDestroyedSquadMember(this);
+        }
+        
+        // Create death effects
+        this.createDeathEffect();
+        
+        // Log elimination
+        console.log(`Squad member '${this.squadConfig.name}' has been eliminated!`);
+        
+        // Remove from squad members group and destroy
+        if (this.scene.squadMembers) {
+            this.scene.squadMembers.remove(this, true, true); // Remove and destroy
+        } else {
+            this.destroy();
+        }
+    }
+    
+    // Create death effect for NPCs
+    createDeathEffect() {
+        // Create blood splats
+        for (let i = 0; i < 2; i++) {
+            const offsetX = (Math.random() - 0.5) * 20;
+            const offsetY = (Math.random() - 0.5) * 20;
+            
+            const bloodSplat = this.scene.add.image(this.x + offsetX, this.y + offsetY, 'bloodSplat');
+            bloodSplat.setDepth(-5);
+            bloodSplat.setAlpha(0.8);
+            bloodSplat.setScale(0.3 + Math.random() * 0.3);
+            
+            if (this.scene.bloodSplats) {
+                this.scene.bloodSplats.add(bloodSplat);
+            }
+            
+            // Fade out blood splat over time
+            this.scene.tweens.add({
+                targets: bloodSplat,
+                alpha: 0,
+                duration: 12000,
+                onComplete: () => bloodSplat.destroy()
+            });
+        }
+        
+        // Death message effect
+        const deathText = this.scene.add.text(this.x, this.y - 60, `${this.squadConfig.name} KIA`, {
+            fontSize: '14px',
+            fill: '#ff0000',
+            fontFamily: 'Courier New',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        deathText.setOrigin(0.5);
+        deathText.setDepth(2100);
+        
+        // Animate death text
+        this.scene.tweens.add({
+            targets: deathText,
+            y: deathText.y - 40,
+            alpha: 0,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => deathText.destroy()
+        });
     }
     
     // Override shoot method to prevent NPCs from updating main player's ammo UI

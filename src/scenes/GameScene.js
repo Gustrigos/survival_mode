@@ -151,11 +151,29 @@ export class GameScene extends Phaser.Scene {
             
             // Add minimal required properties
             this.player.health = 100;
+            this.player.maxHealth = 100;
             this.player.damage = 30;
+            this.player.usingSWATSprites = false;
             this.player.canTakeDamage = () => true;
-            this.player.takeDamage = () => {};
-            this.player.shoot = () => {};
-            this.player.reload = () => {};
+            this.player.takeDamage = (amount) => {
+                this.player.health -= amount;
+                window.gameState.playerHealth = this.player.health;
+                window.updateUI.health(this.player.health, this.player.maxHealth);
+                if (this.player.health <= 0) {
+                    this.gameOver();
+                }
+            };
+            this.player.die = () => {
+                this.gameOver();
+            };
+            this.player.shoot = () => {
+                console.log('Player shooting (fallback)');
+                const bullet = this.bullets.get();
+                if (bullet) {
+                    bullet.fire(this.player.x, this.player.y - 20, 0, -300);
+                }
+            };
+            this.player.reload = () => console.log('Player reloading (fallback)');
             this.player.update = () => {};
             this.player.setDirection = () => {};
             this.player.setMoving = () => {};
@@ -997,8 +1015,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     playerHitZombie(player, zombie) {
+        // Safety check: make sure player still exists and has a body
+        if (!player || !player.body || !player.active) {
+            return; // Player has been destroyed, skip collision
+        }
+        
         if (player.canTakeDamage()) {
             player.takeDamage(20);
+            
+            // Safety check: make sure player still has a body after taking damage
+            if (!player.body || !player.active) {
+                return; // Player was destroyed by the damage, skip knockback
+            }
             
             // Knockback effect
             const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, player.x, player.y);
@@ -1006,7 +1034,7 @@ export class GameScene extends Phaser.Scene {
             
             // Stop knockback after short time
             this.time.delayedCall(100, () => {
-                if (player.body) {
+                if (player && player.body && player.active) {
                     player.body.setVelocity(0, 0);
                 }
             });
@@ -1014,15 +1042,17 @@ export class GameScene extends Phaser.Scene {
             // Only trigger game over if the MAIN player dies, not squad members
             if (player.health <= 0 && !player.isNPC) {
                 this.gameOver();
-            } else if (player.health <= 0 && player.isNPC) {
-                // Squad member died - log it but don't end the game
-                console.log(`Squad member '${player.squadConfig.name}' has been eliminated!`);
-                // The NPCPlayer.destroy() method will handle cleanup
             }
+            // Squad members handle their own death in NPCPlayer.die() method
         }
     }
     
     zombieHitStructure(zombie, structure) {
+        // Safety check: make sure zombie still exists and has a body
+        if (!zombie || !zombie.body || !zombie.active) {
+            return; // Zombie has been destroyed, skip collision
+        }
+        
         // Zombies attack wooden structures
         if (structure.material === 'wood' && structure.isDestructible) {
             const destroyed = structure.zombieAttack(5); // Zombies do less damage than bullets
@@ -1031,10 +1061,15 @@ export class GameScene extends Phaser.Scene {
                 console.log(`Structure ${structure.structureType} destroyed by zombie!`);
             }
             
+            // Safety check: make sure zombie still has a body after structure interaction
+            if (!zombie.body || !zombie.active) {
+                return; // Zombie was destroyed during interaction, skip movement
+            }
+            
             // Zombie briefly stops to attack
             zombie.body.setVelocity(0, 0);
             this.time.delayedCall(500, () => {
-                if (zombie.body) {
+                if (zombie && zombie.body && zombie.active) {
                     // Resume movement toward player
                     const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
                     zombie.body.setVelocity(Math.cos(angle) * zombie.speed, Math.sin(angle) * zombie.speed);
@@ -1127,16 +1162,26 @@ export class GameScene extends Phaser.Scene {
     
     updateDepthSorting() {
         // Sort sprites by Y position for Pokemon-style layering
-        this.player.setDepth(this.player.y);
+        if (this.player && this.player.active) {
+            this.player.setDepth(this.player.y);
+        }
         
         // Update squad members depth
-        this.squadMembers.children.entries.forEach(squadMember => {
-            squadMember.setDepth(squadMember.y);
-        });
+        if (this.squadMembers) {
+            this.squadMembers.children.entries.forEach(squadMember => {
+                if (squadMember && squadMember.active) {
+                    squadMember.setDepth(squadMember.y);
+                }
+            });
+        }
         
-        this.zombies.children.entries.forEach(zombie => {
-            zombie.setDepth(zombie.y);
-        });
+        if (this.zombies) {
+            this.zombies.children.entries.forEach(zombie => {
+                if (zombie && zombie.active) {
+                    zombie.setDepth(zombie.y);
+                }
+            });
+        }
     }
     
     cleanupEffects() {
@@ -1391,6 +1436,12 @@ export class GameScene extends Phaser.Scene {
             this.player.health -= amount;
             window.gameState.playerHealth = this.player.health;
             window.updateUI.health(this.player.health, this.player.maxHealth);
+            if (this.player.health <= 0) {
+                this.gameOver();
+            }
+        };
+        this.player.die = () => {
+            this.gameOver();
         };
         this.player.shoot = () => {
             console.log('Player shooting (fallback)');
@@ -1436,16 +1487,20 @@ export class GameScene extends Phaser.Scene {
             {
                 name: 'Alpha',
                 color: 0x00ff00, // Green
-                formationOffset: { x: -80, y: 60 }, // Left-back formation
+                formationOffset: { x: -50, y: 40 }, // Tighter left-back formation
                 weapon: 'pistol',
-                aggroRange: 250
+                aggroRange: 250,
+                followDistance: 60, // Closer follow distance
+                maxSeparation: 200 // Max distance before abandoning combat to follow
             },
             {
                 name: 'Bravo',
                 color: 0xff8800, // Orange
-                formationOffset: { x: 80, y: 60 }, // Right-back formation
+                formationOffset: { x: 50, y: 40 }, // Tighter right-back formation
                 weapon: 'machineGun',
-                aggroRange: 300
+                aggroRange: 300,
+                followDistance: 60, // Closer follow distance
+                maxSeparation: 200 // Max distance before abandoning combat to follow
             }
         ];
         
@@ -1475,30 +1530,82 @@ export class GameScene extends Phaser.Scene {
         // Clear existing content
         squadMembersDiv.innerHTML = '';
         
-        // Add each squad member to HTML
+        // Show all squad members (including dead ones) to track casualties
         if (this.squadMembers) {
+            // Get all squad members that were created (including destroyed ones)
+            const allSquadMembers = [
+                ...this.squadMembers.children.entries,
+                // Also track destroyed squad members by checking our initial squad configs
+                ...this.getDestroyedSquadMembers()
+            ];
+            
+            // If we have active squad members, show them
             this.squadMembers.children.entries.forEach((squadMember, index) => {
-                if (squadMember.active) {
+                if (squadMember) { // Check if exists (active or inactive)
                     const memberDiv = document.createElement('div');
                     memberDiv.className = 'squad-member';
                     
                     const name = squadMember.squadConfig.name;
-                    const health = Math.ceil(squadMember.health);
+                    const health = squadMember.active ? Math.ceil(squadMember.health) : 0;
                     const maxHealth = squadMember.maxHealth;
-                    const healthPercent = health / maxHealth;
+                    const healthPercent = squadMember.active ? (health / maxHealth) : 0;
                     const color = `#${squadMember.squadConfig.color.toString(16).padStart(6, '0')}`;
                     
+                    // Show different styling for dead vs alive
+                    const statusClass = squadMember.active && health > 0 ? '' : ' style="opacity: 0.5;"';
+                    const statusText = squadMember.active && health > 0 ? '' : ' [KIA]';
+                    
                     memberDiv.innerHTML = `
-                        <span style="color: ${color}; font-weight: bold;">${name}</span>
-                        <div class="squad-health-bar">
+                        <span style="color: ${color}; font-weight: bold;"${statusClass}>${name}${statusText}</span>
+                        <div class="squad-health-bar"${statusClass}>
                             <div class="squad-health-fill" style="width: ${healthPercent * 100}%;"></div>
                         </div>
-                        <span>${health}/${maxHealth}</span>
+                        <span${statusClass}>${health}/${maxHealth}</span>
                     `;
                     
                     squadMembersDiv.appendChild(memberDiv);
                 }
             });
+            
+            // Also show destroyed squad members
+            const destroyedMembers = this.getDestroyedSquadMembers();
+            destroyedMembers.forEach(memberInfo => {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'squad-member';
+                
+                const color = `#${memberInfo.color.toString(16).padStart(6, '0')}`;
+                
+                memberDiv.innerHTML = `
+                    <span style="color: ${color}; font-weight: bold; opacity: 0.5;">${memberInfo.name} [KIA]</span>
+                    <div class="squad-health-bar" style="opacity: 0.5;">
+                        <div class="squad-health-fill" style="width: 0%;"></div>
+                    </div>
+                    <span style="opacity: 0.5;">0/${memberInfo.maxHealth}</span>
+                `;
+                
+                squadMembersDiv.appendChild(memberDiv);
+            });
         }
+    }
+    
+    // Track destroyed squad members for HUD display
+    getDestroyedSquadMembers() {
+        if (!this.destroyedSquadMembers) {
+            this.destroyedSquadMembers = [];
+        }
+        return this.destroyedSquadMembers;
+    }
+    
+    // Call this when a squad member dies to track them
+    trackDestroyedSquadMember(squadMember) {
+        if (!this.destroyedSquadMembers) {
+            this.destroyedSquadMembers = [];
+        }
+        
+        this.destroyedSquadMembers.push({
+            name: squadMember.squadConfig.name,
+            color: squadMember.squadConfig.color,
+            maxHealth: squadMember.maxHealth
+        });
     }
 } 
