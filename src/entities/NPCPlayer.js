@@ -26,6 +26,13 @@ export class NPCPlayer extends Player {
         this.isDead = false; // Track death state to prevent multiple death calls
         this.isRetreating = false; // Track if NPC is retreating due to reloading
         
+        // === SQUAD COMMAND PROPERTIES ===
+        this.squadMode = 'follow'; // 'follow' or 'hold' - controlled by player
+        this.pingTarget = null; // Specific zombie to focus fire on
+        this.pingLocation = null; // Specific location to move to
+        this.holdPosition = null; // Position to hold when in 'hold' mode
+        this.isExecutingPing = false; // Whether currently executing a ping command
+        
         // Create name tag
         this.createNameTag();
         
@@ -103,8 +110,8 @@ export class NPCPlayer extends Player {
         const distanceToLeader = this.scene.player ? 
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
-        // PRIORITY 1: If reloading, abandon everything and retreat to leader
-        if (this.isRetreating && this.isReloading) {
+        // PRIORITY 1: If reloading and NOT in hold mode, retreat to leader
+        if (this.isRetreating && this.isReloading && this.squadMode !== 'hold') {
             this.target = null;
             this.isFollowing = true;
             // Force follow behavior update every frame during retreat for responsiveness
@@ -112,12 +119,25 @@ export class NPCPlayer extends Player {
             return; // Skip all other AI logic during retreat
         }
         
-        // PRIORITY 2: If too far from leader, abandon combat and return to formation
-        if (distanceToLeader > this.squadConfig.maxSeparation) {
+        // PRIORITY 2: Check if we're blocking the player's line of fire and move out of the way
+        if (this.isBlockingPlayer()) {
+            this.repositionToAvoidBlocking();
+            return; // Skip other AI logic while repositioning
+        }
+        
+        // PRIORITY 3: Execute squad commands (NEW) - This now takes precedence over max separation
+        if (this.executeSquadCommands(distanceToLeader)) {
+            return; // Skip normal AI if executing specific squad commands
+        }
+        
+        // PRIORITY 4: If too far from leader AND NOT in hold mode, abandon combat and return to formation
+        if (distanceToLeader > this.squadConfig.maxSeparation && this.squadMode !== 'hold') {
             this.target = null;
             this.isFollowing = true;
             console.log(`${this.squadConfig.name} too far from leader (${distanceToLeader.toFixed(0)}), returning to formation`);
         }
+        
+        // NOTE: Removed emergency follow logic - hold mode is now absolute
         
         // Scan for zombie targets periodically (but only if not retreating or forced to follow)
         if (time - this.lastTargetScanTime > this.targetScanInterval && 
@@ -186,6 +206,15 @@ export class NPCPlayer extends Player {
             return;
         }
         
+        // Check line of sight before shooting to prevent friendly fire
+        if (!this.scene.checkLineOfSight(this, this.target)) {
+            console.log(`${this.squadConfig.name} holding fire - friendly in line of sight`);
+            
+            // Try to find a better firing position
+            this.repositionForClearShot();
+            return; // Don't shoot if friendly units are in the way
+        }
+        
         // Calculate direction to target
         const angle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
         
@@ -222,8 +251,86 @@ export class NPCPlayer extends Player {
         }
     }
     
+    // Reposition to get a clear shot when line of sight is blocked
+    repositionForClearShot() {
+        if (!this.target || !this.scene.player) return;
+        
+        // Calculate perpendicular positions around the target for flanking
+        const targetX = this.target.x;
+        const targetY = this.target.y;
+        const playerX = this.scene.player.x;
+        const playerY = this.scene.player.y;
+        
+        // Calculate angle from target to player
+        const targetToPlayerAngle = Phaser.Math.Angle.Between(targetX, targetY, playerX, playerY);
+        
+        // Try flanking positions 90 degrees left and right of the target-to-player line
+        const flankDistance = 80; // Distance to move for flanking
+        const leftFlankAngle = targetToPlayerAngle + Math.PI / 2; // 90 degrees left
+        const rightFlankAngle = targetToPlayerAngle - Math.PI / 2; // 90 degrees right
+        
+        // Choose the closer flanking position
+        const leftFlankX = targetX + Math.cos(leftFlankAngle) * flankDistance;
+        const leftFlankY = targetY + Math.sin(leftFlankAngle) * flankDistance;
+        const rightFlankX = targetX + Math.cos(rightFlankAngle) * flankDistance;
+        const rightFlankY = targetY + Math.sin(rightFlankAngle) * flankDistance;
+        
+        const leftDistance = Phaser.Math.Distance.Between(this.x, this.y, leftFlankX, leftFlankY);
+        const rightDistance = Phaser.Math.Distance.Between(this.x, this.y, rightFlankX, rightFlankY);
+        
+        // Choose the closer flanking position
+        const targetFlankX = leftDistance < rightDistance ? leftFlankX : rightFlankX;
+        const targetFlankY = leftDistance < rightDistance ? leftFlankY : rightFlankY;
+        
+        // Move towards the flanking position
+        const angle = Phaser.Math.Angle.Between(this.x, this.y, targetFlankX, targetFlankY);
+        const speed = 150; // Tactical repositioning speed
+        
+        const velocityX = Math.cos(angle) * speed;
+        const velocityY = Math.sin(angle) * speed;
+        
+        this.setVelocity(velocityX, velocityY);
+        
+        // Update direction for animation
+        let direction = 'down';
+        const degrees = Phaser.Math.RadToDeg(angle);
+        
+        // Map angle ranges to 8 directions including diagonals
+        if (degrees >= -22.5 && degrees < 22.5) {
+            direction = 'right';
+        } else if (degrees >= 22.5 && degrees < 67.5) {
+            direction = 'down-right';
+        } else if (degrees >= 67.5 && degrees < 112.5) {
+            direction = 'down';
+        } else if (degrees >= 112.5 && degrees < 157.5) {
+            direction = 'down-left';
+        } else if (degrees >= 157.5 || degrees < -157.5) {
+            direction = 'left';
+        } else if (degrees >= -157.5 && degrees < -112.5) {
+            direction = 'up-left';
+        } else if (degrees >= -112.5 && degrees < -67.5) {
+            direction = 'up';
+        } else if (degrees >= -67.5 && degrees < -22.5) {
+            direction = 'up-right';
+        }
+        
+        this.setDirection(direction);
+        this.setMoving(true);
+        
+        console.log(`${this.squadConfig.name} flanking for clear shot`);
+    }
+    
     updateFollowBehavior() {
         if (!this.scene.player) return;
+        
+        // If in hold mode, don't follow at all - ABSOLUTE hold with no exceptions
+        if (this.squadMode === 'hold') {
+            // In hold mode - don't follow, just stay put regardless of retreat status
+            this.setVelocity(0, 0);
+            this.setMoving(false);
+            this.isFollowing = false;
+            return;
+        }
         
         // Calculate desired position based on formation offset
         const mainPlayer = this.scene.player;
@@ -249,8 +356,8 @@ export class NPCPlayer extends Player {
         
         // Determine if we should follow based on distance and combat status
         const shouldFollow = this.isRetreating || // Always follow when retreating
-                           distanceToDesired > followThreshold ||
-                           distanceToLeader > this.squadConfig.maxSeparation;
+                           (this.squadMode !== 'hold' && distanceToDesired > followThreshold) ||
+                           distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow mode only
         
         // Only move if outside the dead zone AND should follow
         if (shouldFollow && distanceToDesired > deadZone) {
@@ -335,16 +442,29 @@ export class NPCPlayer extends Player {
         // Flash name tag when taking damage (NPC-specific visual feedback)
         if (this.nameTag) {
             this.nameTag.setTint(0xff0000);
-            this.scene.tweens.add({
-                targets: this.nameTag,
-                alpha: 0.3,
-                duration: 100,
-                yoyo: true,
-                onComplete: () => {
+            
+            // Safely create name tag damage tween
+            try {
+                this.scene.tweens.add({
+                    targets: this.nameTag,
+                    alpha: 0.3,
+                    duration: 100,
+                    yoyo: true,
+                    onComplete: () => {
+                        if (this.nameTag && this.nameTag.active) {
+                            this.nameTag.clearTint();
+                            this.nameTag.setAlpha(0.8);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn(`Error creating name tag tween for ${this.squadConfig.name}:`, error);
+                // Fallback: just clear the tint immediately
+                if (this.nameTag && this.nameTag.active) {
                     this.nameTag.clearTint();
                     this.nameTag.setAlpha(0.8);
                 }
-            });
+            }
         }
         
         // Check for death
@@ -419,15 +539,27 @@ export class NPCPlayer extends Player {
         deathText.setOrigin(0.5);
         deathText.setDepth(2100);
         
-        // Animate death text
-        this.scene.tweens.add({
-            targets: deathText,
-            y: deathText.y - 40,
-            alpha: 0,
-            duration: 2000,
-            ease: 'Power2',
-            onComplete: () => deathText.destroy()
-        });
+        // Animate death text with safety check
+        try {
+            this.scene.tweens.add({
+                targets: deathText,
+                y: deathText.y - 40,
+                alpha: 0,
+                duration: 2000,
+                ease: 'Power2',
+                onComplete: () => {
+                    if (deathText && deathText.active) {
+                        deathText.destroy();
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn(`Error creating death text tween for ${this.squadConfig.name}:`, error);
+            // Fallback: destroy text immediately
+            if (deathText && deathText.active) {
+                deathText.destroy();
+            }
+        }
     }
     
     // Override shoot method to prevent NPCs from updating main player's ammo UI
@@ -531,16 +663,26 @@ export class NPCPlayer extends Player {
         this.isReloading = true;
         this.reloadStartTime = this.scene.time.now;
         
-        // Trigger retreat behavior - NPC becomes vulnerable and seeks leader protection
-        this.isRetreating = true;
-        this.target = null; // Abandon current target
-        this.isFollowing = true; // Force follow mode
-        
-        console.log(`${this.squadConfig.name} is reloading and retreating to leader for protection!`);
-        
-        // Visual indication of retreating (subtle name tag color change)
-        if (this.nameTag) {
-            this.nameTag.setTint(0xffaa00); // Orange tint during retreat
+        // Only trigger retreat behavior if NOT in hold mode
+        if (this.squadMode !== 'hold') {
+            this.isRetreating = true;
+            this.target = null; // Abandon current target
+            this.isFollowing = true; // Force follow mode
+            console.log(`${this.squadConfig.name} is reloading and retreating to leader for protection!`);
+            
+            // Visual indication of retreating (subtle name tag color change)
+            if (this.nameTag) {
+                this.nameTag.setTint(0xffaa00); // Orange tint during retreat
+            }
+        } else {
+            // In hold mode - stay put while reloading, no retreat
+            console.log(`${this.squadConfig.name} is reloading in place (hold mode)`);
+            this.target = null; // Still abandon current target while reloading
+            
+            // Visual indication of reloading in place
+            if (this.nameTag) {
+                this.nameTag.setTint(0xaaaa00); // Darker yellow tint for reload in place
+            }
         }
         
         // DO NOT update window.gameState.isReloading 
@@ -549,10 +691,19 @@ export class NPCPlayer extends Player {
     
     // Override for NPC-specific behavior when dying
     destroy() {
-        if (this.nameTag) {
-            this.nameTag.destroy();
+        // Clean up name tag and any associated tweens
+        if (this.nameTag && this.nameTag.active) {
+            try {
+                // Kill any tweens targeting the name tag
+                this.scene.tweens.killTweensOf(this.nameTag);
+                this.nameTag.destroy();
+            } catch (error) {
+                console.warn(`Error destroying name tag for ${this.squadConfig.name}:`, error);
+            }
+            this.nameTag = null;
         }
-        // Removed health bar cleanup - using UI panel instead
+        
+        // Call parent destroy
         super.destroy();
         console.log(`Squad member '${this.squadConfig.name}' has been eliminated`);
     }
@@ -579,5 +730,331 @@ export class NPCPlayer extends Player {
             isFollowing: this.isFollowing,
             position: { x: this.x, y: this.y }
         };
+    }
+    
+    // Check if this NPC is blocking the player's line of fire
+    isBlockingPlayer() {
+        if (!this.scene.player || !this.scene.player.active) {
+            return false;
+        }
+        
+        // Only check blocking if player is moving or has recently moved
+        const player = this.scene.player;
+        const playerDirection = player.direction;
+        
+        // Skip check if player is not facing any direction
+        if (!playerDirection) {
+            return false;
+        }
+        
+        // Calculate player's facing direction vector
+        let facingX = 0, facingY = 0;
+        switch (playerDirection) {
+            case 'up':
+                facingY = -1;
+                break;
+            case 'down':
+                facingY = 1;
+                break;
+            case 'left':
+                facingX = -1;
+                break;
+            case 'right':
+                facingX = 1;
+                break;
+            case 'up-left':
+                facingX = -0.707;
+                facingY = -0.707;
+                break;
+            case 'up-right':
+                facingX = 0.707;
+                facingY = -0.707;
+                break;
+            case 'down-left':
+                facingX = -0.707;
+                facingY = 0.707;
+                break;
+            case 'down-right':
+                facingX = 0.707;
+                facingY = 0.707;
+                break;
+        }
+        
+        // Check if NPC is in front of the player (within 60 pixels in facing direction)
+        const directionX = this.x - player.x;
+        const directionY = this.y - player.y;
+        
+        // Project NPC position onto player's facing direction
+        const dotProduct = directionX * facingX + directionY * facingY;
+        
+        // If NPC is in front of player (positive dot product) and close to the line
+        if (dotProduct > 0 && dotProduct < 60) {
+            // Calculate perpendicular distance from NPC to player's facing line
+            const perpendicularDistance = Math.abs(directionX * facingY - directionY * facingX);
+            
+            // If NPC is within 35 pixels of the player's facing line, they're blocking
+            if (perpendicularDistance < 35) {
+                console.log(`${this.squadConfig.name} is blocking player's line of fire`);
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Reposition to avoid blocking the player
+    repositionToAvoidBlocking() {
+        if (!this.scene.player) return;
+        
+        const player = this.scene.player;
+        
+        // Calculate perpendicular directions to player's facing direction
+        let moveX = 0, moveY = 0;
+        
+        switch (player.direction) {
+            case 'up':
+            case 'down':
+                // Move left or right
+                moveX = this.x < player.x ? -60 : 60; // Move away from player's horizontal position
+                break;
+            case 'left':
+            case 'right':
+                // Move up or down
+                moveY = this.y < player.y ? -60 : 60; // Move away from player's vertical position
+                break;
+            case 'up-left':
+            case 'down-right':
+                // Move in perpendicular diagonal
+                moveX = 60;
+                moveY = -60;
+                break;
+            case 'up-right':
+            case 'down-left':
+                // Move in perpendicular diagonal
+                moveX = -60;
+                moveY = -60;
+                break;
+        }
+        
+        // Calculate new target position
+        const targetX = player.x + moveX;
+        const targetY = player.y + moveY;
+        
+        // Move towards the repositioning target
+        const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
+        const speed = 180; // Fast repositioning speed
+        
+        const velocityX = Math.cos(angle) * speed;
+        const velocityY = Math.sin(angle) * speed;
+        
+        this.setVelocity(velocityX, velocityY);
+        
+        // Update direction for animation
+        let direction = 'down';
+        const degrees = Phaser.Math.RadToDeg(angle);
+        
+        // Map angle ranges to 8 directions including diagonals
+        if (degrees >= -22.5 && degrees < 22.5) {
+            direction = 'right';
+        } else if (degrees >= 22.5 && degrees < 67.5) {
+            direction = 'down-right';
+        } else if (degrees >= 67.5 && degrees < 112.5) {
+            direction = 'down';
+        } else if (degrees >= 112.5 && degrees < 157.5) {
+            direction = 'down-left';
+        } else if (degrees >= 157.5 || degrees < -157.5) {
+            direction = 'left';
+        } else if (degrees >= -157.5 && degrees < -112.5) {
+            direction = 'up-left';
+        } else if (degrees >= -112.5 && degrees < -67.5) {
+            direction = 'up';
+        } else if (degrees >= -67.5 && degrees < -22.5) {
+            direction = 'up-right';
+        }
+        
+        this.setDirection(direction);
+        this.setMoving(true);
+        
+        console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
+    }
+    
+    // === SQUAD COMMAND SYSTEM ===
+    
+    updateSquadCommand() {
+        // Skip if game is still initializing
+        if (this.scene && !this.scene.squadCommandsInitialized) {
+            return;
+        }
+        
+        // Called when squad leader gives new commands
+        console.log(`${this.squadConfig.name} received squad command - Mode: ${this.squadMode}, PingTarget: ${!!this.pingTarget}, PingLocation: ${!!this.pingLocation}`);
+        
+        // Set hold position when switching to hold mode
+        if (this.squadMode === 'hold' && !this.holdPosition) {
+            this.holdPosition = { x: this.x, y: this.y };
+            console.log(`${this.squadConfig.name} setting hold position at (${this.x.toFixed(0)}, ${this.y.toFixed(0)})`);
+        } else if (this.squadMode === 'follow') {
+            this.holdPosition = null;
+        }
+        
+        // Set ping execution flag
+        this.isExecutingPing = !!(this.pingTarget || this.pingLocation);
+        
+        // Update name tag to show current command - with safety check
+        if (!this.isDead && this.active) {
+            this.updateNameTagWithCommand();
+        }
+    }
+    
+    executeSquadCommands(distanceToLeader) {
+        // Return true if we're handling a specific command and should skip normal AI
+        
+        // PRIORITY 1: Execute ping target (focus fire)
+        if (this.pingTarget && this.pingTarget.active) {
+            // Target the pinged zombie specifically
+            this.target = this.pingTarget;
+            this.aimAndShoot();
+            
+            // Show we're executing focus fire command
+            if (this.nameTag && this.nameTag.active && !this.isDead) {
+                try {
+                    this.nameTag.setText(`${this.squadConfig.name} [FOCUS]`);
+                    this.nameTag.setTint(0xff0000); // Red tint for focus fire
+                } catch (error) {
+                    console.warn(`Error updating name tag for focus fire: ${this.squadConfig.name}`, error);
+                }
+            }
+            
+            return true; // Skip normal AI
+        }
+        
+        // PRIORITY 2: Execute ping location (move to position)
+        if (this.pingLocation && this.squadMode === 'follow') {
+            const distanceToPing = Phaser.Math.Distance.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
+            
+            if (distanceToPing > 30) { // Move towards ping location
+                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
+                const speed = 180; // Fast movement for ping commands
+                
+                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                this.updateDirectionFromMovement(angle);
+                this.setMoving(true);
+                
+                // Show we're executing move command
+                if (this.nameTag && this.nameTag.active && !this.isDead) {
+                    try {
+                        this.nameTag.setText(`${this.squadConfig.name} [MOVE]`);
+                        this.nameTag.setTint(0x00ffff); // Cyan tint for movement
+                    } catch (error) {
+                        console.warn(`Error updating name tag for move: ${this.squadConfig.name}`, error);
+                    }
+                }
+                
+                return true; // Skip normal AI
+            } else {
+                // Reached ping location, clear it
+                this.pingLocation = null;
+                this.isExecutingPing = false;
+            }
+        }
+        
+        // PRIORITY 3: Hold position mode - absolute hold
+        if (this.squadMode === 'hold' && this.holdPosition) {
+            const distanceToHold = Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+            
+            if (distanceToHold > 25) { // Return to hold position if moved too far
+                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+                const speed = 120; // Moderate speed to return to position
+                
+                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                this.updateDirectionFromMovement(angle);
+                this.setMoving(true);
+                
+                // Show we're returning to hold position
+                if (this.nameTag && this.nameTag.active && !this.isDead) {
+                    try {
+                        this.nameTag.setText(`${this.squadConfig.name} [HOLD]`);
+                        this.nameTag.setTint(0xff6600); // Orange tint for hold
+                    } catch (error) {
+                        console.warn(`Error updating name tag for hold: ${this.squadConfig.name}`, error);
+                    }
+                }
+                
+                return true; // Skip normal AI
+            } else {
+                // At hold position, just scan for targets but don't move
+                this.setVelocity(0, 0);
+                this.setMoving(false);
+                
+                // Scan for targets while holding position
+                this.scanForTargets();
+                if (this.target && this.target.active) {
+                    this.aimAndShoot();
+                }
+                
+                // Show we're holding position
+                if (this.nameTag && this.nameTag.active && !this.isDead) {
+                    try {
+                        this.nameTag.setText(`${this.squadConfig.name} [HOLD]`);
+                        this.nameTag.setTint(0xff6600); // Orange tint for hold
+                    } catch (error) {
+                        console.warn(`Error updating name tag for hold stationary: ${this.squadConfig.name}`, error);
+                    }
+                }
+                
+                return true; // Skip normal follow AI
+            }
+        }
+        
+        // If not executing any specific command, restore normal name tag
+        if (!this.isDead && this.active) {
+            this.updateNameTagWithCommand();
+        }
+        
+        return false; // Continue with normal AI
+    }
+    
+    updateNameTagWithCommand() {
+        if (!this.nameTag || !this.nameTag.active) return;
+        
+        try {
+            // Reset to normal name and color
+            this.nameTag.setText(this.squadConfig.name);
+            this.nameTag.clearTint();
+            
+            // Add mode indicator
+            if (this.squadMode === 'hold') {
+                this.nameTag.setText(`${this.squadConfig.name} [H]`); // H for Hold
+                this.nameTag.setTint(0xffaa00); // Light orange for hold mode
+            }
+        } catch (error) {
+            console.warn(`Error updating name tag for ${this.squadConfig.name}:`, error);
+        }
+    }
+    
+    updateDirectionFromMovement(angle) {
+        // Update direction for animation based on movement angle
+        let direction = 'down';
+        const degrees = Phaser.Math.RadToDeg(angle);
+        
+        if (degrees >= -22.5 && degrees < 22.5) {
+            direction = 'right';
+        } else if (degrees >= 22.5 && degrees < 67.5) {
+            direction = 'down-right';
+        } else if (degrees >= 67.5 && degrees < 112.5) {
+            direction = 'down';
+        } else if (degrees >= 112.5 && degrees < 157.5) {
+            direction = 'down-left';
+        } else if (degrees >= 157.5 || degrees < -157.5) {
+            direction = 'left';
+        } else if (degrees >= -157.5 && degrees < -112.5) {
+            direction = 'up-left';
+        } else if (degrees >= -112.5 && degrees < -67.5) {
+            direction = 'up';
+        } else if (degrees >= -67.5 && degrees < -22.5) {
+            direction = 'up-right';
+        }
+        
+        this.setDirection(direction);
     }
 } 

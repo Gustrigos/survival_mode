@@ -75,13 +75,24 @@
         <h3>🔫 Enhanced Shooting Debug Test</h3>
         <p><strong>Issue:</strong> Player can't shoot zombies effectively</p>
         <p><strong>Debug Features:</strong> Comprehensive logging for shooting mechanics, player direction, bullet movement, and collision detection</p>
+        
+        <p><strong>NEW: Squad Command System!</strong> Control your AI squad with Q key and right-click commands. Hold mode is now ABSOLUTELY UNBREAKABLE - squad members will NOT move AT ALL when set to hold, even when reloading.</p>
         <div class="controls">
             <div><strong>Movement:</strong> WASD keys</div>
             <div><strong>Shooting:</strong> SPACE (hold for auto)</div>
             <div><strong>Reload:</strong> R key</div>
             <div><strong>Physics Debug:</strong> Enabled (see collision boxes)</div>
         </div>
+        
+        <div class="controls" style="margin-top: 10px; border-left: 3px solid #e74c3c;">
+            <div><strong>Squad Commands:</strong> Hold Q - Command Wheel</div>
+            <div><strong>Target Ping:</strong> Right-click zombies</div>
+            <div><strong>Position Ping:</strong> Right-click ground</div>
+            <div><strong>ABSOLUTE HOLD:</strong> NPCs NEVER move when holding (0 exceptions)</div>
+        </div>
         <p><strong>Instructions:</strong> Open browser console (F12) to see detailed debug logs. Try shooting at zombies and watch the console for shooting, direction, and collision data.</p>
+        
+        <p><strong>Squad Command Testing:</strong> Hold Q to show command wheel - click TOGGLE to switch Follow/Hold modes. In Hold mode, squad members will stay at their current position with ZERO exceptions - they won't move even when reloading, being shot, or if you disappear across the map. Right-click on zombies for focus fire, or right-click ground for movement orders. Observe squad member name tags changing to show their current status ([FOCUS], [MOVE], [HOLD]).</p>
     </div>
     
     <div class="debug-panel">

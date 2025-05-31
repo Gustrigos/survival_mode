@@ -187,6 +187,30 @@ export class GameScene extends Phaser.Scene {
         // Create squad members
         this.createSquad();
         
+        // === SQUAD COMMAND SYSTEM ===
+        this.squadMode = 'follow'; // 'follow' or 'hold'
+        this.pingTarget = null; // Current ping target for focus fire
+        this.pingMarker = null; // Visual marker for ping
+        this.squadModeText = null; // UI text showing current mode
+        this.squadCommandsInitialized = false; // Flag to prevent early updates
+        this.qKeyWasDown = false; // Track Q key state for hold behavior
+        
+        // Create squad mode UI indicator
+        this.createSquadModeUI();
+        
+        // Initialize squad members with current mode (without triggering updates)
+        this.initializeSquadCommands();
+        
+        // Set up right-click for target pinging
+        this.input.on('pointerdown', (pointer) => {
+            if (pointer.rightButtonDown()) {
+                this.handleRightClick(pointer);
+            }
+        });
+        
+        // Mark squad commands as ready
+        this.squadCommandsInitialized = true;
+        
         // Camera setup - follow player with bounds
         this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
         this.cameras.main.startFollow(this.player, true, 0.05, 0.05);
@@ -756,40 +780,47 @@ export class GameScene extends Phaser.Scene {
     }
 
     update(time, delta) {
-        // Update player
-        this.player.update(time, delta);
-        
-        // Update main player name tag position
-        if (this.player.nameTag) {
-            this.player.nameTag.x = this.player.x;
-            this.player.nameTag.y = this.player.y - 40;
+        // Update all entities
+        if (this.player && this.player.update) {
+            this.player.update(time, delta);
+            
+            // Update main player name tag position if it exists
+            if (this.player.nameTag) {
+                this.player.nameTag.x = this.player.x;
+                this.player.nameTag.y = this.player.y - 40;
+            }
         }
-        
-        // Removed main player health bar updates - using UI panel instead
-        
-        // Update crash site structures (if any have special behavior)
-        // Currently no special updates needed for crash site structures
         
         // Handle input
         this.handleInput();
         
-        // Spawn zombies
+        // Handle zombie spawning
         this.handleZombieSpawning(time, delta);
         
         // Check wave completion
         this.checkWaveCompletion();
         
-        // Update depth sorting for Pokemon-style layering
+        // Update depth sorting for proper layering
         this.updateDepthSorting();
         
-        // Clean up old effects
+        // Clean up effects
         this.cleanupEffects();
         
         // Update debug text
         this.updateDebugText();
         
-        // Update HTML squad status
-        this.updateHTMLSquadStatus();
+        // === SQUAD COMMAND CLEANUP ===
+        // Clean up ping target if zombie dies
+        if (this.pingTarget && (!this.pingTarget.active || this.pingTarget.health <= 0)) {
+            console.log('🎯 Ping target destroyed, clearing ping');
+            this.clearPing();
+        }
+        
+        // Update ping marker position if following a moving target
+        if (this.pingTarget && this.pingTarget.active && this.pingMarker) {
+            this.pingMarker.x = this.pingTarget.x;
+            this.pingMarker.y = this.pingTarget.y;
+        }
     }
     
     handleInput() {
@@ -869,6 +900,28 @@ export class GameScene extends Phaser.Scene {
             // Future: Add interaction with crash site structures
             // Could include searching wreckage, entering buildings, etc.
         }
+        
+        // === SQUAD COMMANDS ===
+        // Q key - Hold to show command wheel
+        const qKey = this.input.keyboard.addKey('Q');
+        if (qKey.isDown && !this.qKeyWasDown) {
+            // Q just pressed - show command wheel
+            if (this.player && this.player.active && this.squadMembers && this.squadMembers.children.size > 0) {
+                try {
+                    this.showCommandWheel();
+                } catch (error) {
+                    console.warn('Error showing command wheel:', error);
+                }
+            }
+        } else if (!qKey.isDown && this.qKeyWasDown) {
+            // Q just released - hide command wheel
+            if (this.commandWheel) {
+                this.hideCommandWheel();
+            }
+        }
+        
+        // Track Q key state
+        this.qKeyWasDown = qKey.isDown;
     }
     
     handleZombieSpawning(time, delta) {
@@ -1007,6 +1060,135 @@ export class GameScene extends Phaser.Scene {
         
         // Remove bullet properly and disable its physics body
         bullet.deactivate();
+    }
+    
+    bulletHitFriendly(bullet, unit) {
+        // Safety check: ensure bullet is valid and has the deactivate method
+        if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
+            console.warn('⚠️ Invalid bullet in bulletHitFriendly:', {
+                bullet: bullet,
+                bulletType: typeof bullet,
+                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
+                bulletActive: bullet ? bullet.active : 'N/A'
+            });
+            return; // Skip processing invalid bullets
+        }
+        
+        // Friendly fire prevention - bullets pass through friendly units harmlessly
+        console.log('🛡️ Friendly fire prevented:', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            friendlyName: unit.squadConfig?.name || 'LEADER',
+            friendlyPos: { x: unit.x.toFixed(2), y: unit.y.toFixed(2) }
+        });
+        
+        // Create a subtle shield effect to show friendly fire prevention
+        const shieldEffect = this.add.circle(unit.x, unit.y, 20, 0x00BFFF, 0.3);
+        shieldEffect.setDepth(unit.depth + 1);
+        
+        this.tweens.add({
+            targets: shieldEffect,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0,
+            duration: 200,
+            ease: 'Power2',
+            onComplete: () => shieldEffect.destroy()
+        });
+        
+        // DO NOT deactivate bullet - let it pass through friendly unit
+        // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
+        
+        console.log('💫 Bullet passed through friendly unit and continues traveling');
+    }
+    
+    // Line-of-sight checking for NPCs to prevent friendly fire
+    checkLineOfSight(shooter, target) {
+        if (!shooter || !target || !shooter.active || !target.active) {
+            return false; // Invalid units
+        }
+        
+        // Calculate the shooting line from shooter to target
+        const shooterX = shooter.x;
+        const shooterY = shooter.y;
+        const targetX = target.x;
+        const targetY = target.y;
+        
+        // Check if any friendly units are in the line of fire
+        const friendlyUnits = [];
+        
+        // Add main player to check list
+        if (this.player && this.player.active && this.player !== shooter) {
+            friendlyUnits.push(this.player);
+        }
+        
+        // Add all squad members to check list (except the shooter)
+        if (this.squadMembers) {
+            this.squadMembers.children.entries.forEach(squadMember => {
+                if (squadMember && squadMember.active && squadMember !== shooter) {
+                    friendlyUnits.push(squadMember);
+                }
+            });
+        }
+        
+        // Check each friendly unit for line-of-sight obstruction
+        for (const friendly of friendlyUnits) {
+            const distanceToLine = this.pointToLineDistance(
+                friendly.x, friendly.y,
+                shooterX, shooterY,
+                targetX, targetY
+            );
+            
+            // If friendly unit is too close to the line of fire (within 30 pixels)
+            // and is between shooter and target, block the shot
+            if (distanceToLine < 30) {
+                const friendlyDistanceFromShooter = Phaser.Math.Distance.Between(
+                    shooterX, shooterY, friendly.x, friendly.y
+                );
+                const targetDistanceFromShooter = Phaser.Math.Distance.Between(
+                    shooterX, shooterY, targetX, targetY
+                );
+                
+                // Only block if friendly is between shooter and target
+                if (friendlyDistanceFromShooter < targetDistanceFromShooter) {
+                    console.log(`🚫 Line of sight blocked by ${friendly.squadConfig?.name || 'LEADER'}`);
+                    return false; // Line of sight blocked
+                }
+            }
+        }
+        
+        return true; // Clear line of sight
+    }
+    
+    // Calculate distance from a point to a line (for line-of-sight checking)
+    pointToLineDistance(px, py, x1, y1, x2, y2) {
+        const A = px - x1;
+        const B = py - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        
+        if (lenSq === 0) return Math.sqrt(A * A + B * B);
+        
+        const param = dot / lenSq;
+        
+        let xx, yy;
+        
+        if (param < 0) {
+            xx = x1;
+            yy = y1;
+        } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+        
+        const dx = px - xx;
+        const dy = py - yy;
+        return Math.sqrt(dx * dx + dy * dy);
     }
     
     createSparkEffect(x, y) {
@@ -1209,6 +1391,41 @@ export class GameScene extends Phaser.Scene {
                 casing.destroy();
             }
         });
+        
+        // Clean up any orphaned command wheel elements
+        this.cleanupCommandSystem();
+    }
+    
+    cleanupCommandSystem() {
+        // Safely clean up command wheel elements if they're inactive
+        if (this.commandWheelElements) {
+            this.commandWheelElements = this.commandWheelElements.filter(element => {
+                if (element && !element.active) {
+                    return false; // Remove from array
+                }
+                return true; // Keep in array
+            });
+            
+            // If no elements left, clean up the wheel
+            if (this.commandWheelElements.length === 0) {
+                this.commandWheel = null;
+                this.commandWheelElements = [];
+                this.commandWheelBg = null;
+                this.currentModeText = null;
+                this.commandInstructions = null;
+                this.toggleButton = null;
+                this.toggleButtonText = null;
+            }
+        }
+        
+        // Safely clean up ping markers if they're inactive
+        if (this.pingMarker && !this.pingMarker.active) {
+            this.pingMarker = null;
+        }
+        
+        if (this.pingTextMarker && !this.pingTextMarker.active) {
+            this.pingTextMarker = null;
+        }
     }
     
     updateUI() {
@@ -1233,6 +1450,10 @@ export class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
         
+        // NEW: Universal bullet collision detection for friendly fire prevention
+        this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
+        this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
+        
         // Solid collisions with structures (existing)
         this.physics.add.collider(this.player, this.structures);
         this.physics.add.collider(this.squadMembers, this.structures);
@@ -1254,7 +1475,7 @@ export class GameScene extends Phaser.Scene {
         // Zombies vs Zombies - solid collision (zombies can't pass through each other)
         this.physics.add.collider(this.zombies, this.zombies);
         
-        console.log('Collisions set up with structures, squad members, and solid entity physics');
+        console.log('Collisions set up with structures, squad members, solid entity physics, and universal bullet collision detection');
     }
     
     updateDebugText() {
@@ -1662,5 +1883,466 @@ export class GameScene extends Phaser.Scene {
             color: squadMember.squadConfig.color,
             maxHealth: squadMember.maxHealth
         });
+    }
+    
+    // === SQUAD COMMAND SYSTEM METHODS ===
+    
+    createSquadModeUI() {
+        // Create squad mode indicator in top-left corner
+        this.squadModeText = this.add.text(20, 50, `Squad: ${this.squadMode.toUpperCase()}`, {
+            fontSize: '16px',
+            fill: '#00ff00',
+            fontFamily: 'Courier New',
+            stroke: '#000000',
+            strokeThickness: 2,
+            backgroundColor: '#000000',
+            padding: { x: 8, y: 4 }
+        }).setDepth(2000).setScrollFactor(0);
+        
+        // Add instruction text
+        this.squadInstructionText = this.add.text(20, 75, 'Hold Q: Command Wheel | Right-Click: Ping Target', {
+            fontSize: '12px',
+            fill: '#ffff00',
+            fontFamily: 'Courier New',
+            stroke: '#000000',
+            strokeThickness: 1,
+            backgroundColor: '#000000',
+            padding: { x: 6, y: 2 },
+            alpha: 0.8
+        }).setDepth(2000).setScrollFactor(0);
+        
+        console.log('Squad command UI created');
+    }
+    
+    toggleSquadMode() {
+        // Safety check before changing squad mode
+        if (!this.squadMembers || this.squadMembers.children.size === 0) {
+            console.warn('Cannot toggle squad mode: No active squad members');
+            return;
+        }
+        
+        // Show command wheel instead of direct toggle
+        this.showCommandWheel();
+    }
+    
+    updateSquadModeUI() {
+        if (this.squadModeText) {
+            this.squadModeText.setText(`Squad: ${this.squadMode.toUpperCase()}`);
+            
+            // Change color based on mode
+            if (this.squadMode === 'follow') {
+                this.squadModeText.setFill('#00ff00'); // Green for follow
+            } else {
+                this.squadModeText.setFill('#ff6600'); // Orange for hold
+            }
+        }
+    }
+    
+    handleRightClick(pointer) {
+        // Convert screen coordinates to world coordinates
+        const worldX = this.cameras.main.scrollX + pointer.x;
+        const worldY = this.cameras.main.scrollY + pointer.y;
+        
+        // Check if clicking on a zombie for focus fire
+        let targetZombie = null;
+        this.zombies.children.entries.forEach(zombie => {
+            if (zombie.active) {
+                const distance = Phaser.Math.Distance.Between(worldX, worldY, zombie.x, zombie.y);
+                if (distance < 50) { // 50 pixel click tolerance
+                    targetZombie = zombie;
+                }
+            }
+        });
+        
+        if (targetZombie) {
+            // Ping specific zombie for focus fire
+            this.setPingTarget(targetZombie);
+            console.log(`🎯 Ping target set: Zombie at (${targetZombie.x.toFixed(0)}, ${targetZombie.y.toFixed(0)})`);
+        } else {
+            // Ping location for movement/positioning
+            this.setPingLocation(worldX, worldY);
+            console.log(`📍 Ping location set: (${worldX.toFixed(0)}, ${worldY.toFixed(0)})`);
+            
+            // If command wheel is open, also show enhanced feedback
+            if (this.commandWheel) {
+                console.log(`🎯 Squad ordered to move while command wheel active`);
+            }
+        }
+    }
+    
+    setPingTarget(zombie) {
+        this.pingTarget = zombie;
+        this.createPingMarker(zombie.x, zombie.y, 'target');
+        
+        // Notify squad members of new target
+        this.updateSquadBehavior();
+        
+        // Auto-clear ping after 10 seconds or when target dies
+        this.time.delayedCall(10000, () => {
+            if (this.pingTarget === zombie) {
+                this.clearPing();
+            }
+        });
+    }
+    
+    setPingLocation(x, y) {
+        this.pingLocation = { x, y };
+        this.createPingMarker(x, y, 'location');
+        
+        // Notify squad members of new position
+        this.updateSquadBehavior();
+        
+        // Auto-clear ping after 8 seconds
+        this.time.delayedCall(8000, () => {
+            this.clearPing();
+        });
+    }
+    
+    createPingMarker(x, y, type) {
+        // Clear existing marker safely
+        if (this.pingMarker && this.pingMarker.active) {
+            try {
+                this.tweens.killTweensOf(this.pingMarker);
+                this.pingMarker.destroy();
+            } catch (error) {
+                console.warn('Error destroying existing ping marker:', error);
+            }
+            this.pingMarker = null;
+        }
+        
+        // Clear existing text marker safely
+        if (this.pingTextMarker && this.pingTextMarker.active) {
+            try {
+                this.tweens.killTweensOf(this.pingTextMarker);
+                this.pingTextMarker.destroy();
+            } catch (error) {
+                console.warn('Error destroying existing ping text marker:', error);
+            }
+            this.pingTextMarker = null;
+        }
+        
+        // Create ping visual effect
+        const color = type === 'target' ? 0xff0000 : 0x00ffff; // Red for target, cyan for location
+        const size = type === 'target' ? 25 : 20;
+        
+        try {
+            this.pingMarker = this.add.circle(x, y, size, color, 0.6);
+            this.pingMarker.setDepth(1500);
+            this.pingMarker.setStrokeStyle(3, color, 1);
+            
+            // Pulsing animation with comprehensive safety checks
+            if (this.pingMarker && this.pingMarker.active && this.tweens) {
+                this.tweens.add({
+                    targets: this.pingMarker,
+                    scaleX: 1.5,
+                    scaleY: 1.5,
+                    alpha: 0.2,
+                    duration: 1000,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut',
+                    onUpdate: () => {
+                        // Safety check during animation
+                        if (!this.pingMarker || !this.pingMarker.active) {
+                            return false; // Stop the tween
+                        }
+                    },
+                    onComplete: () => {
+                        // Safety check when animation completes
+                        if (this.pingMarker && this.pingMarker.active) {
+                            // Animation completed successfully
+                        }
+                    }
+                });
+            }
+            
+            // Add ping text
+            const pingText = type === 'target' ? 'FOCUS FIRE' : 'MOVE HERE';
+            this.pingTextMarker = this.add.text(x, y - 40, pingText, {
+                fontSize: '12px',
+                fill: type === 'target' ? '#ff0000' : '#00ffff',
+                fontFamily: 'Courier New',
+                stroke: '#000000',
+                strokeThickness: 2
+            }).setOrigin(0.5).setDepth(1501);
+            
+            // Fade out text after 3 seconds with comprehensive safety checks
+            if (this.pingTextMarker && this.pingTextMarker.active && this.tweens) {
+                this.tweens.add({
+                    targets: this.pingTextMarker,
+                    alpha: 0,
+                    duration: 3000,
+                    onUpdate: () => {
+                        // Safety check during animation
+                        if (!this.pingTextMarker || !this.pingTextMarker.active) {
+                            return false; // Stop the tween
+                        }
+                    },
+                    onComplete: () => {
+                        if (this.pingTextMarker && this.pingTextMarker.active) {
+                            this.pingTextMarker.destroy();
+                            this.pingTextMarker = null;
+                        }
+                    }
+                });
+            }
+            
+        } catch (error) {
+            console.warn('Error creating ping marker:', error);
+        }
+        
+        console.log(`🎯 Ping marker created at (${x}, ${y}) - Type: ${type}`);
+    }
+    
+    clearPing() {
+        this.pingTarget = null;
+        this.pingLocation = null;
+        
+        // Safely destroy ping marker
+        if (this.pingMarker && this.pingMarker.active) {
+            try {
+                this.tweens.killTweensOf(this.pingMarker); // Stop any running tweens
+                this.pingMarker.destroy();
+            } catch (error) {
+                console.warn('Error destroying ping marker:', error);
+            }
+            this.pingMarker = null;
+        }
+        
+        // Safely destroy ping text marker
+        if (this.pingTextMarker && this.pingTextMarker.active) {
+            try {
+                this.tweens.killTweensOf(this.pingTextMarker); // Stop any running tweens
+                this.pingTextMarker.destroy();
+            } catch (error) {
+                console.warn('Error destroying ping text marker:', error);
+            }
+            this.pingTextMarker = null;
+        }
+        
+        // Update squad behavior to clear ping orders
+        this.updateSquadBehavior();
+    }
+    
+    updateSquadBehavior() {
+        // Only update if commands are fully initialized
+        if (!this.squadCommandsInitialized || !this.squadMembers) return;
+        
+        this.squadMembers.children.entries.forEach(squadMember => {
+            if (squadMember && squadMember.active && !squadMember.isDead && typeof squadMember.updateSquadCommand === 'function') {
+                // Update squad member's mode
+                squadMember.squadMode = this.squadMode;
+                
+                // Set ping target/location
+                squadMember.pingTarget = this.pingTarget;
+                squadMember.pingLocation = this.pingLocation;
+                
+                // Trigger immediate behavior update with safety check
+                try {
+                    squadMember.updateSquadCommand();
+                } catch (error) {
+                    console.warn(`Error updating squad command for ${squadMember.squadConfig?.name || 'unknown'}:`, error);
+                }
+            }
+        });
+    }
+    
+    initializeSquadCommands() {
+        // Initialize squad members with default mode without triggering updates
+        if (!this.squadMembers) return;
+        
+        this.squadMembers.children.entries.forEach(squadMember => {
+            if (squadMember && squadMember.active && !squadMember.isDead) {
+                // Set initial mode directly without calling updateSquadCommand
+                squadMember.squadMode = this.squadMode;
+                squadMember.pingTarget = null;
+                squadMember.pingLocation = null;
+                squadMember.holdPosition = null;
+                squadMember.isExecutingPing = false;
+                
+                console.log(`${squadMember.squadConfig.name} initialized with mode: ${this.squadMode}`);
+            }
+        });
+    }
+    
+    // === COMMAND WHEEL SYSTEM ===
+    
+    showCommandWheel() {
+        // Prevent multiple wheels
+        if (this.commandWheel) {
+            return;
+        }
+        
+        // Create individual elements directly (not in a container)
+        this.commandWheelElements = [];
+        
+        // Get screen center
+        const centerX = this.cameras.main.width / 2;
+        const centerY = this.cameras.main.height / 2;
+        
+        // Background circle
+        this.commandWheelBg = this.add.circle(centerX, centerY, 80, 0x000000, 0.8);
+        this.commandWheelBg.setStrokeStyle(3, 0xffffff);
+        this.commandWheelBg.setDepth(3000);
+        this.commandWheelBg.setScrollFactor(0);
+        this.commandWheelElements.push(this.commandWheelBg);
+        
+        // Current mode text
+        this.currentModeText = this.add.text(centerX, centerY - 30, `${this.squadMode.toUpperCase()}`, {
+            fontSize: '18px',
+            fill: this.squadMode === 'follow' ? '#00ff00' : '#ff6600',
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        this.currentModeText.setOrigin(0.5);
+        this.currentModeText.setDepth(3001);
+        this.currentModeText.setScrollFactor(0);
+        this.commandWheelElements.push(this.currentModeText);
+        
+        // Instructions
+        this.commandInstructions = this.add.text(centerX, centerY, 'Click to Toggle', {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            stroke: '#000000',
+            strokeThickness: 1
+        });
+        this.commandInstructions.setOrigin(0.5);
+        this.commandInstructions.setDepth(3001);
+        this.commandInstructions.setScrollFactor(0);
+        this.commandWheelElements.push(this.commandInstructions);
+        
+        // Toggle button
+        this.toggleButton = this.add.rectangle(centerX, centerY + 30, 60, 20, 0x666666);
+        this.toggleButton.setStrokeStyle(2, 0xffffff);
+        this.toggleButton.setDepth(3001);
+        this.toggleButton.setScrollFactor(0);
+        this.toggleButton.setInteractive({ useHandCursor: true });
+        this.commandWheelElements.push(this.toggleButton);
+        
+        // Toggle button text
+        this.toggleButtonText = this.add.text(centerX, centerY + 30, 'TOGGLE', {
+            fontSize: '10px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontWeight: 'bold'
+        });
+        this.toggleButtonText.setOrigin(0.5);
+        this.toggleButtonText.setDepth(3002);
+        this.toggleButtonText.setScrollFactor(0);
+        this.commandWheelElements.push(this.toggleButtonText);
+        
+        // Button interactions
+        this.toggleButton.on('pointerdown', () => {
+            this.toggleSquadModeSimple();
+        });
+        
+        this.toggleButton.on('pointerover', () => {
+            this.toggleButton.setFillStyle(0x888888);
+        });
+        
+        this.toggleButton.on('pointerout', () => {
+            this.toggleButton.setFillStyle(0x666666);
+        });
+        
+        // Set flag
+        this.commandWheel = true;
+        
+        // Fade in all elements
+        this.commandWheelElements.forEach(element => {
+            element.setAlpha(0);
+            this.tweens.add({
+                targets: element,
+                alpha: 1,
+                duration: 200,
+                ease: 'Power2'
+            });
+        });
+        
+        console.log('🎯 Simple command wheel opened');
+    }
+    
+    hideCommandWheel() {
+        if (!this.commandWheel || !this.commandWheelElements) return;
+        
+        // Fade out and destroy all elements
+        this.commandWheelElements.forEach(element => {
+            if (element && element.active) {
+                this.tweens.add({
+                    targets: element,
+                    alpha: 0,
+                    duration: 150,
+                    ease: 'Power2',
+                    onComplete: () => {
+                        if (element && element.active) {
+                            element.destroy();
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Clean up references
+        this.commandWheel = null;
+        this.commandWheelElements = [];
+        this.commandWheelBg = null;
+        this.currentModeText = null;
+        this.commandInstructions = null;
+        this.toggleButton = null;
+        this.toggleButtonText = null;
+        
+        console.log('🎯 Simple command wheel closed');
+    }
+    
+    toggleSquadModeSimple() {
+        // Simple toggle between follow and hold
+        const oldMode = this.squadMode;
+        this.squadMode = this.squadMode === 'follow' ? 'hold' : 'follow';
+        
+        // Clear any existing ping when changing modes
+        if (this.squadMode === 'follow') {
+            this.clearPing();
+        }
+        
+        // Update squad members' behavior
+        this.updateSquadBehavior();
+        
+        // Update UI
+        this.updateSquadModeUI();
+        
+        // Update command wheel display safely
+        if (this.currentModeText && this.currentModeText.active) {
+            try {
+                this.currentModeText.setText(`${this.squadMode.toUpperCase()}`);
+                this.currentModeText.setFill(this.squadMode === 'follow' ? '#00ff00' : '#ff6600');
+                
+                // Brief highlight effect to show the change
+                this.currentModeText.setScale(1.2);
+                this.tweens.add({
+                    targets: this.currentModeText,
+                    scaleX: 1,
+                    scaleY: 1,
+                    duration: 200,
+                    ease: 'Back.easeOut'
+                });
+            } catch (error) {
+                console.warn('Error updating command wheel text:', error);
+            }
+        }
+        
+        console.log(`🎯 Squad mode toggled from ${oldMode.toUpperCase()} to ${this.squadMode.toUpperCase()}`);
+    }
+    
+    selectCommand(mode) {
+        // This method is no longer used but keeping for compatibility
+        if (mode === 'cancel') {
+            return;
+        }
+        
+        this.squadMode = mode;
+        this.updateSquadBehavior();
+        this.updateSquadModeUI();
     }
 } 

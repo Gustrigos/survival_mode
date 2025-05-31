@@ -17,10 +17,6 @@ const config = {
         }
     },
     scene: [GameScene, MenuScene, GameOverScene], // Start with GameScene first
-    scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
-    },
     pixelArt: true, // For crisp pixel art
     antialias: false
 };
