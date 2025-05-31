@@ -63,61 +63,41 @@ export class SentryGun extends Phaser.Physics.Arcade.Sprite {
         // Force an update to ensure scaling is applied before collision box calculation
         this.updateDisplayOrigin();
         
-        // Set up collision box size using the ACTUAL scaled display size (not getBounds)
-        // getBounds() might not reflect the scaling immediately, so use displayWidth/Height directly
-        const actualDisplayWidth = this.displayWidth;
-        const actualDisplayHeight = this.displayHeight;
+        // Make physics body much smaller than the sprite (after all scaling is done)
+        // 1 - get the visible size after all scaling
+        const visW = this.displayWidth;
+        const visH = this.displayHeight;
         
-        // Sentry gun collision body - dynamic size like Player.js
-        // Use sprite display size-based sizing for easier targeting and interaction
-        const bodyWidth = Math.min(actualDisplayWidth * 1.5, 80);   // 150% of display size, capped at 80px
-        const bodyHeight = Math.min(actualDisplayHeight * 1.5, 80); // 150% of display size, capped at 80px
+        // 2 - make hit-box much smaller (55% width, 70% height to hug gun + tripod)
+        const bodyW = visW * 0.55;
+        const bodyH = visH * 0.70;
         
-        // Set body size and center it automatically (true flag centers like Player.js)
-        this.body.setSize(bodyWidth, bodyHeight, true);
+        // 3 - apply size & center it inside the sprite
+        this.body.setSize(bodyW, bodyH);
+        this.body.setOffset(
+            (visW - bodyW) / 2,
+            (visH - bodyH) / 2
+        );
+        
+        // 4 - static body refresh (required for static bodies)
+        this.body.updateFromGameObject();
+        
+        // 5 - ensure it stays immovable
+        this.body.immovable = true;
+        this.body.moves = false;
+        this.body.pushable = false;
+        this.body.enable = true;
+        
+        console.log(`🎯 Sentry gun body resized to: ${bodyW.toFixed(1)}x${bodyH.toFixed(1)} (was ${visW.toFixed(1)}x${visH.toFixed(1)} sprite)`);
         
         // EXPLICIT DEBUG: Log the collision box calculation step by step
         console.log(`🎯 COLLISION BOX DEBUG:`);
-        console.log(`  actualDisplayWidth: ${actualDisplayWidth}`);
-        console.log(`  actualDisplayHeight: ${actualDisplayHeight}`);
-        console.log(`  calculated bodyWidth: ${bodyWidth}`);
-        console.log(`  calculated bodyHeight: ${bodyHeight}`);
+        console.log(`  visW: ${visW}, visH: ${visH}`);
+        console.log(`  bodyW: ${bodyW}, bodyH: ${bodyH}`);
         console.log(`  final body.width: ${this.body.width}`);
         console.log(`  final body.height: ${this.body.height}`);
         console.log(`  body position: (${this.body.x}, ${this.body.y})`);
         console.log(`  body center: (${this.body.center.x}, ${this.body.center.y})`);
-        
-        // THEN configure as static and immovable - CORRECT ORDER IS IMPORTANT
-        this.body.immovable = true; // Set immovable property directly (not a method)
-        this.body.moves = false; // Prevent any movement
-        this.body.pushable = false; // Cannot be pushed
-        this.body.enable = true; // Ensure collision detection is enabled
-        
-        // Force refresh the physics body to ensure changes take effect
-        this.body.updateFromGameObject();
-        
-        // Debug: Verify physics body configuration with enhanced logging
-        console.log(`🎯 Sentry gun physics body:`, {
-            isStatic: this.body.isStatic,
-            moves: this.body.moves,
-            pushable: this.body.pushable,
-            immovable: this.body.immovable,
-            enable: this.body.enable,
-            size: { width: this.body.width, height: this.body.height },
-            position: { x: this.body.x, y: this.body.y },
-            center: { x: this.body.center.x, y: this.body.center.y },
-            spriteBounds: { width: actualDisplayWidth.toFixed(1), height: actualDisplayHeight.toFixed(1) },
-            bodySize: { width: bodyWidth.toFixed(1), height: bodyHeight.toFixed(1) },
-            scalingFactor: '1.5x sprite display size (like player)',
-            spriteDisplaySize: { width: actualDisplayWidth.toFixed(1), height: actualDisplayHeight.toFixed(1) }
-        });
-        
-        // Verify the body is properly static
-        if (!this.body.isStatic && !this.body.immovable) {
-            console.warn('🎯 Warning: Sentry gun body is not static or immovable!');
-        } else {
-            console.log('✅ Sentry gun body is properly configured as static/immovable');
-        }
         
         console.log(`Sentry gun placed at (${x}, ${y}) with ${this.health} health`);
         

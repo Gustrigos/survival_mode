@@ -846,17 +846,32 @@ export class GameScene extends Phaser.Scene {
                     console.log(`🛡️ Sandbag scaled to: ${sandbag.displayWidth}x${sandbag.displayHeight}`);
                 }
                 
-                // Enlarge the physics body to fill the entire 64-px tile so nothing can slip through
+                // Make physics body much smaller than the sprite (after all scaling is done)
                 if (sandbag.body && sandbag.body.setSize) {
-                    sandbag.body.setSize(64, 32, true); // full tile width, centred
-                    // Make absolutely sure the body is static & immovable
+                    // 1 - get the visible size after all scaling
+                    const visW = sandbag.displayWidth;
+                    const visH = sandbag.displayHeight;
+                    
+                    // 2 - make hit-box much smaller (60% width, 50% height)
+                    const bodyW = visW * 0.6;
+                    const bodyH = visH * 0.5;
+                    
+                    // 3 - apply size & center it inside the sprite
+                    sandbag.body.setSize(bodyW, bodyH);
+                    sandbag.body.setOffset(
+                        (visW - bodyW) / 2,
+                        (visH - bodyH) / 2
+                    );
+                    
+                    // 4 - static body refresh (required for static bodies)
+                    sandbag.body.updateFromGameObject();
+                    
+                    // 5 - ensure it stays immovable
                     sandbag.body.immovable = true;
                     sandbag.body.moves = false;
                     sandbag.body.pushable = false;
-                    // Sync body with the new size/offset
-                    if (typeof sandbag.body.updateFromGameObject === 'function') {
-                        sandbag.body.updateFromGameObject();
-                    }
+                    
+                    console.log(`🛡️ Sandbag body resized to: ${bodyW.toFixed(1)}x${bodyH.toFixed(1)} (was ${visW.toFixed(1)}x${visH.toFixed(1)} sprite)`);
                 }
             });
             
@@ -1537,6 +1552,11 @@ export class GameScene extends Phaser.Scene {
     }
     
     bulletHitStructure(bullet, structure) {
+        // Skip sandbags - they have friendly fire protection and bullets pass through
+        if (structure.structureType === 'sandbags') {
+            return; // Let bulletHitStructureFriendly handle sandbags
+        }
+        
         // Only wooden structures can be damaged by bullets
         if (structure.material === 'wood' && structure.isDestructible) {
             const destroyed = structure.bulletHit(this.player.damage);
@@ -1593,6 +1613,50 @@ export class GameScene extends Phaser.Scene {
         // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
         
         console.log('💫 Bullet passed through friendly unit and continues traveling');
+    }
+    
+    bulletHitStructureFriendly(bullet, structure) {
+        // Safety check: ensure bullet is valid and has the deactivate method
+        if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
+            console.warn('⚠️ Invalid bullet in bulletHitStructureFriendly:', {
+                bullet: bullet,
+                bulletType: typeof bullet,
+                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
+                bulletActive: bullet ? bullet.active : 'N/A'
+            });
+            return; // Skip processing invalid bullets
+        }
+        
+        // Only apply friendly fire protection to sandbags - other structures should still stop bullets
+        if (structure.structureType !== 'sandbags') {
+            // Let other collision handlers deal with non-sandbag structures
+            return;
+        }
+        
+        // Sandbag friendly fire prevention - bullets pass through sandbags harmlessly
+        console.log('🛡️ Sandbag friendly fire prevented:', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            sandbagPos: { x: structure.x.toFixed(2), y: structure.y.toFixed(2) }
+        });
+        
+        // Create a subtle shield effect to show friendly fire prevention
+        const shieldEffect = this.add.circle(structure.x, structure.y, 15, 0xC2B280, 0.3); // Sandy color
+        shieldEffect.setDepth(structure.depth + 1);
+        
+        this.tweens.add({
+            targets: shieldEffect,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            alpha: 0,
+            duration: 200,
+            ease: 'Power2',
+            onComplete: () => shieldEffect.destroy()
+        });
+        
+        // DO NOT deactivate bullet - let it pass through sandbag
+        // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
+        
+        console.log('💫 Bullet passed through sandbag and continues traveling');
     }
     
     // Line-of-sight checking for NPCs to prevent friendly fire
@@ -1976,6 +2040,9 @@ export class GameScene extends Phaser.Scene {
         // Use custom collision handlers to reduce bouncing while preventing overlap
         this.physics.add.collider(this.player, this.squadMembers, this.handleFriendlyCollision, null, this);
         this.physics.add.collider(this.squadMembers, this.squadMembers, this.handleSquadCollision, null, this);
+        
+        // Add friendly fire protection for sandbags - bullets pass through
+        this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructureFriendly, null, this);
     }
     
     // Custom collision handler for player vs squad members

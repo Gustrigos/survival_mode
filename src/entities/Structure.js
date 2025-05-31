@@ -100,8 +100,8 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
             case 'military_crate':
                 return { width: 28, height: 28, offsetX: 2, offsetY: 2 };
             case 'sandbags':
-                // Cover the full 64×32 terrain tile to create a solid barrier
-                return { width: 64, height: 32, offsetX: 0, offsetY: 0 };
+                // Default moderate size; will be adjusted dynamically in GameScene
+                return { width: 44, height: 20, offsetX: 2, offsetY: 12 };
             case 'barricade':
                 return { width: 60, height: 16, offsetX: 2, offsetY: 16 };
             case 'debris':
