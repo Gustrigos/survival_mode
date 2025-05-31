@@ -1,4 +1,26 @@
 export class SpriteLoader {
+    /**
+     * Verify that sprite files exist before attempting to load them
+     * @param {Phaser.Scene} scene - The game scene
+     * @param {Array} filePaths - Array of file paths to verify
+     */
+    static async verifyFiles(scene, filePaths) {
+        console.log('🔍 Verifying sprite files exist...');
+        
+        for (const filePath of filePaths) {
+            try {
+                const response = await fetch(filePath, { method: 'HEAD' });
+                if (response.ok) {
+                    console.log(`✅ File exists: ${filePath}`);
+                } else {
+                    console.error(`❌ File not found (${response.status}): ${filePath}`);
+                }
+            } catch (error) {
+                console.error(`❌ Error checking file: ${filePath}`, error);
+            }
+        }
+    }
+
     static loadSprites(scene) {
         console.log('Loading PNG sprites...');
         
@@ -170,19 +192,41 @@ export class SpriteLoader {
     static loadTerrainSprites(scene) {
         console.log('🗺️ Loading terrain sprites...');
         
-        scene.load.image('grass_texture', 'src/assets/sprites/terrain/grass_texture.png');
-        scene.load.image('dirt_texture', 'src/assets/sprites/terrain/dirt_texture.png');
-        scene.load.image('stone_texture', 'src/assets/sprites/terrain/stone_texture.png');
-        scene.load.image('water_texture', 'src/assets/sprites/terrain/water_texture.png');
-        scene.load.image('sand_texture', 'src/assets/sprites/terrain/sand_texture.png');
+        // Add cache busting to prevent browser caching issues
+        const cacheBuster = Date.now();
         
-        console.log('🛣️ Loading dirt_road.png...');
-        scene.load.image('dirt_road', 'src/assets/sprites/terrain/dirt_road.png');
+        scene.load.image('grass_texture', `src/assets/sprites/terrain/grass_texture.png?v=${cacheBuster}`);
+        scene.load.image('dirt_texture', `src/assets/sprites/terrain/dirt_texture.png?v=${cacheBuster}`);
+        scene.load.image('stone_texture', `src/assets/sprites/terrain/stone_texture.png?v=${cacheBuster}`);
+        scene.load.image('water_texture', `src/assets/sprites/terrain/water_texture.png?v=${cacheBuster}`);
         
-        scene.load.image('rubble', 'src/assets/sprites/terrain/rubble.png');
-        scene.load.image('crackled_concrete', 'src/assets/sprites/terrain/crackled_concrete.png');
+        console.log('🏖️ Loading sand_texture.png with cache buster...');
+        scene.load.image('sand_texture', `src/assets/sprites/terrain/sand_texture.png?v=${cacheBuster}`);
         
-        console.log('🗺️ Terrain sprites queued for loading');
+        console.log('🛣️ Loading dirt_road.png with cache buster...');
+        scene.load.image('dirt_road', `src/assets/sprites/terrain/dirt_road.png?v=${cacheBuster}`);
+        
+        scene.load.image('rubble', `src/assets/sprites/terrain/rubble.png?v=${cacheBuster}`);
+        scene.load.image('crackled_concrete', `src/assets/sprites/terrain/crackled_concrete.png?v=${cacheBuster}`);
+        
+        // Add load event listeners for debugging
+        scene.load.on('filecomplete-image-sand_texture', () => {
+            console.log('✅ sand_texture.png loaded successfully');
+        });
+        
+        scene.load.on('filecomplete-image-dirt_road', () => {
+            console.log('✅ dirt_road.png loaded successfully');
+        });
+        
+        // Add error handling for terrain sprites
+        scene.load.on('loaderror', (file) => {
+            if (file.key === 'sand_texture' || file.key === 'dirt_road') {
+                console.error(`🚨 FAILED to load ${file.key} from ${file.src}`);
+                console.log('Check if file exists at:', file.src.replace(/\?v=\d+/, ''));
+            }
+        });
+        
+        console.log('🗺️ Terrain sprites queued for loading with cache busting');
     }
     
     static loadBuildingSprites(scene) {
@@ -191,4 +235,46 @@ export class SpriteLoader {
         scene.load.image('window', 'src/assets/sprites/buildings/window.png');
         scene.load.image('roof', 'src/assets/sprites/buildings/roof.png');
     }
+
+    /**
+     * Diagnostic method to check sprite loading issues
+     * Can be called from browser console: SpriteLoader.diagnoseSprites()
+     */
+    static async diagnoseSprites() {
+        console.log('🔧 SPRITE LOADING DIAGNOSTICS');
+        console.log('=============================');
+        
+        const terrainSprites = [
+            'src/assets/sprites/terrain/dirt_road.png',
+            'src/assets/sprites/terrain/sand_texture.png',
+            'src/assets/sprites/terrain/grass_texture.png',
+            'src/assets/sprites/terrain/crackled_concrete.png',
+            'src/assets/sprites/terrain/rubble.png'
+        ];
+        
+        console.log('📁 Checking file existence...');
+        await this.verifyFiles(null, terrainSprites);
+        
+        console.log('\n🎮 Checking if game scene exists...');
+        if (window.game && window.game.scene && window.game.scene.scenes.length > 0) {
+            const gameScene = window.game.scene.scenes.find(s => s.scene.key === 'GameScene');
+            if (gameScene) {
+                console.log('✅ GameScene found');
+                console.log('📝 Available textures:', Object.keys(gameScene.textures.list).filter(t => t.includes('texture') || t.includes('road')));
+            } else {
+                console.log('❌ GameScene not found');
+            }
+        } else {
+            console.log('❌ Game not found or no scenes loaded');
+        }
+        
+        console.log('\n🔄 To reload sprites, refresh the page with Ctrl+F5 (hard refresh)');
+        console.log('🔧 Make sure your files are in the correct location:');
+        terrainSprites.forEach(path => console.log(`   ${path}`));
+    }
+}
+
+// Make SpriteLoader available globally for debugging
+if (typeof window !== 'undefined') {
+    window.SpriteLoader = SpriteLoader;
 } 

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sprite Loading Debug</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .sprite-test {
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #333;
+            display: inline-block;
+        }
+        .sprite-test img {
+            display: block;
+            border: 1px solid #666;
+            background: #333;
+        }
+        .error {
+            color: #ff0000;
+        }
+        .success {
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Sprite Loading Debug Tool</h1>
+    <p>This page tests if your sprite files can be loaded directly.</p>
+    
+    <div id="sprite-tests"></div>
+    
+    <script>
+        const sprites = [
+            { name: 'dirt_road', path: 'src/assets/sprites/terrain/dirt_road.png' },
+            { name: 'sand_texture', path: 'src/assets/sprites/terrain/sand_texture.png' },
+            { name: 'grass_texture', path: 'src/assets/sprites/terrain/grass_texture.png' },
+            { name: 'crackled_concrete', path: 'src/assets/sprites/terrain/crackled_concrete.png' },
+            { name: 'rubble', path: 'src/assets/sprites/terrain/rubble.png' }
+        ];
+        
+        const container = document.getElementById('sprite-tests');
+        
+        sprites.forEach(sprite => {
+            const testDiv = document.createElement('div');
+            testDiv.className = 'sprite-test';
+            testDiv.innerHTML = `
+                <h3>${sprite.name}</h3>
+                <p>Path: ${sprite.path}</p>
+                <div id="status-${sprite.name}">Loading...</div>
+                <img id="img-${sprite.name}" src="${sprite.path}" width="64" height="64" style="display:none;">
+            `;
+            container.appendChild(testDiv);
+            
+            const img = document.getElementById(`img-${sprite.name}`);
+            const status = document.getElementById(`status-${sprite.name}`);
+            
+            img.onload = () => {
+                status.innerHTML = `<span class="success">✅ Loaded successfully (${img.naturalWidth}x${img.naturalHeight})</span>`;
+                img.style.display = 'block';
+            };
+            
+            img.onerror = () => {
+                status.innerHTML = `<span class="error">❌ Failed to load</span>`;
+            };
+        });
+        
+        // Also test cache busting
+        setTimeout(() => {
+            const cacheBusterDiv = document.createElement('div');
+            cacheBusterDiv.innerHTML = `
+                <h2>🔄 Cache Buster Test</h2>
+                <p>Testing with cache buster (like the game does):</p>
+            `;
+            container.appendChild(cacheBusterDiv);
+            
+            const cacheBuster = Date.now();
+            sprites.slice(0, 2).forEach(sprite => {
+                const testDiv = document.createElement('div');
+                testDiv.className = 'sprite-test';
+                const cacheBustedPath = `${sprite.path}?v=${cacheBuster}`;
+                testDiv.innerHTML = `
+                    <h3>${sprite.name} (cache busted)</h3>
+                    <p>Path: ${cacheBustedPath}</p>
+                    <div id="status-cb-${sprite.name}">Loading...</div>
+                    <img id="img-cb-${sprite.name}" src="${cacheBustedPath}" width="64" height="64" style="display:none;">
+                `;
+                container.appendChild(testDiv);
+                
+                const img = document.getElementById(`img-cb-${sprite.name}`);
+                const status = document.getElementById(`status-cb-${sprite.name}`);
+                
+                img.onload = () => {
+                    status.innerHTML = `<span class="success">✅ Cache busted load successful</span>`;
+                    img.style.display = 'block';
+                };
+                
+                img.onerror = () => {
+                    status.innerHTML = `<span class="error">❌ Cache busted load failed</span>`;
+                };
+            });
+        }, 2000);
+    </script>
+    
+    <div style="margin-top: 40px; padding: 20px; border: 1px solid #333;">
+        <h2>📋 Instructions</h2>
+        <ol>
+            <li>Check if all sprites show "✅ Loaded successfully"</li>
+            <li>If any show "❌ Failed to load", the file doesn't exist at that path</li>
+            <li>Make sure your files are in: <code>src/assets/sprites/terrain/</code></li>
+            <li>After fixing files, do a hard refresh (Ctrl+F5) in your game</li>
+        </ol>
+        
+        <h3>🔧 Browser Console Commands</h3>
+        <p>In your game, open DevTools and run:</p>
+        <code>SpriteLoader.diagnoseSprites()</code>
+    </div>
+</body>
+</html> 

@@ -64,8 +64,15 @@ export class GameScene extends Phaser.Scene {
         terrainTextures.forEach(texture => {
             if (this.textures.exists(texture)) {
                 console.log(`✓ Terrain texture '${texture}' exists`);
+                // Log additional details about the loaded texture
+                const textureObj = this.textures.get(texture);
+                const source = textureObj.getSourceImage();
+                const width = source.width || source.naturalWidth || 'unknown';
+                const height = source.height || source.naturalHeight || 'unknown';
+                console.log(`  → ${texture} dimensions: ${width}x${height}`);
             } else {
                 console.error(`✗ Terrain texture '${texture}' missing!`);
+                console.error(`  → This will cause fallback rectangles to be used instead of sprites`);
             }
         });
         
@@ -73,8 +80,13 @@ export class GameScene extends Phaser.Scene {
         let texturesReady = terrainTextures.every(texture => this.textures.exists(texture));
         console.log(`🗺️ All terrain textures ready: ${texturesReady}`);
         
+        // List all available textures for debugging
+        const allTextures = Object.keys(this.textures.list);
+        console.log('🗺️ ALL AVAILABLE TEXTURES:', allTextures.filter(t => t.includes('texture') || t.includes('road')));
+        
         if (!texturesReady) {
             console.warn('⚠️ Some terrain textures not loaded yet, will retry terrain creation...');
+            console.warn('⚠️ Missing textures:', terrainTextures.filter(texture => !this.textures.exists(texture)));
             // Set a flag to retry terrain creation once textures are loaded
             this.needsTerrainRetry = true;
         }
@@ -86,6 +98,12 @@ export class GameScene extends Phaser.Scene {
                 useNearestFilter: true,
                 compressLargeTextures: true
             });
+            
+            // OPTIONAL: Generate seamless terrain textures without transparent borders
+            // Uncomment the line below to use programmatically generated terrain instead of sprites
+            // TerrainOptimizer.createSeamlessTerrainTextures(this);
+            // Or just roads: TerrainOptimizer.createSeamlessRoadTextures(this);
+            
         } catch (error) {
             console.warn('Terrain optimization failed:', error);
         }
@@ -288,6 +306,15 @@ export class GameScene extends Phaser.Scene {
         
         console.log('GameScene create() completed');
         
+        // Make this scene instance accessible for debugging
+        if (typeof window !== 'undefined') {
+            window.gameScene = this;
+            console.log('🔧 GameScene available globally as window.gameScene');
+            console.log('🔧 Run gameScene.debugRoadLayout() to debug roads');
+            console.log('🔧 Run gameScene.enableSeamlessTerrain() to fix ALL terrain gaps');
+            console.log('🔧 Run gameScene.enableSeamlessRoads() to fix road gaps only');
+        }
+        
         // Create inventory hotbar (Minecraft style)
         this.createInventoryHotbar();
         
@@ -448,6 +475,7 @@ export class GameScene extends Phaser.Scene {
         for (let x = 0; x < worldWidth; x += tileSize) {
             for (let y = 0; y < worldHeight; y += tileSize) {
                 let terrainType = 'sand_texture';
+                let rotation = 0; // Track rotation for directional tiles
                 
                 // Crash site area (center of map)
                 if (x >= 800 && x <= 1200 && y >= 600 && y <= 900) {
@@ -457,10 +485,21 @@ export class GameScene extends Phaser.Scene {
                 else if (x >= 256 && x <= 640 && y >= 448 && y <= 768) {
                     terrainType = 'crackled_concrete';
                 }
-                // Main roads
-                else if ((x >= 320 && x <= 384 && y >= 0 && y <= worldHeight) || // Main vertical road
-                         (x >= 0 && x <= worldWidth && y >= 576 && y <= 640)) { // Main horizontal road
+                // Main roads - improved alignment and rotation
+                else if (x >= 288 && x <= 416 && y >= 544 && y <= 672) {
+                    // Intersection area - use no rotation for consistency
                     terrainType = 'dirt_road';
+                    rotation = 0; // No rotation for intersection
+                }
+                else if (x >= 288 && x <= 416 && y >= 0 && y <= worldHeight) {
+                    // Main vertical road - NO rotation so lines run vertically
+                    terrainType = 'dirt_road';
+                    rotation = 0; // No rotation for vertical lines
+                }
+                else if (x >= 0 && x <= worldWidth && y >= 544 && y <= 672) {
+                    // Main horizontal road - rotate 90 degrees so lines run horizontally
+                    terrainType = 'dirt_road';
+                    rotation = Math.PI / 2; // 90 degrees for horizontal lines
                 }
                 // Random rubble patches (reduced for clarity)
                 else if (Math.random() < 0.01) { // 1% chance – almost none
@@ -472,14 +511,30 @@ export class GameScene extends Phaser.Scene {
                 if (this.textures.exists(terrainType)) {
                     tile = this.add.image(x + tileSize/2, y + tileSize/2, terrainType);
                     
-                    // Debug specific terrain types
-                    if (terrainType === 'dirt_road') {
-                        console.log(`🗺️ Creating dirt_road tile at (${x}, ${y}) using texture:`, terrainType);
+                    // Apply rotation for directional tiles (like vertical roads)
+                    if (rotation !== 0) {
+                        tile.setRotation(rotation);
                     }
                     
-                    // Ensure all terrain tiles are exactly the right size
-                    // This handles both 32x32 and 1024x1024 source textures properly
-                    tile.setDisplaySize(tileSize, tileSize);
+                    // Debug specific terrain types
+                    if (terrainType === 'dirt_road') {
+                        const direction = rotation === 0 ? 'vertical' : 'horizontal';
+                        console.log(`🗺️ Creating ${direction} dirt_road tile at (${x}, ${y}) with rotation: ${rotation}`);
+                    }
+                    if (terrainType === 'sand_texture') {
+                        console.log(`🏖️ Creating sand_texture tile at (${x}, ${y}) using texture:`, terrainType);
+                    }
+                    
+                    // Handle sprite sizing - ALL terrain sprites need to be larger to eliminate gaps
+                    // Most sprite files have transparent borders, so we oversize them to ensure seamless tiling
+                    const oversizeMultiplier = 1.25; // 25% larger to cover transparent borders
+                    tile.setDisplaySize(tileSize * oversizeMultiplier, tileSize * oversizeMultiplier);
+                    
+                    if (terrainType === 'dirt_road') {
+                        console.log(`🛣️ Road sprite oversized to ${(tileSize * oversizeMultiplier).toFixed(0)}x${(tileSize * oversizeMultiplier).toFixed(0)} to eliminate gaps`);
+                    } else {
+                        console.log(`🗺️ ${terrainType} sprite oversized to ${(tileSize * oversizeMultiplier).toFixed(0)}x${(tileSize * oversizeMultiplier).toFixed(0)} to eliminate gaps`);
+                    }
                     
                     // Apply filtering based on configuration
                     if (useNearestFilter) {
@@ -493,6 +548,7 @@ export class GameScene extends Phaser.Scene {
                     if (typeConfig) {
                         tile.setData('sourceSize', typeConfig.sourceSize);
                         tile.setData('tiling', typeConfig.tiling);
+                        tile.setData('direction', rotation === 0 ? 'vertical' : 'horizontal');
                     }
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
@@ -501,6 +557,14 @@ export class GameScene extends Phaser.Scene {
                     if (terrainType === 'dirt_road') {
                         console.error(`🚨 DIRT_ROAD TEXTURE MISSING! Using fallback rectangle at (${x}, ${y})`);
                         console.log('Available textures:', Object.keys(this.textures.list));
+                        console.log('🔧 Expected file: src/assets/sprites/terrain/dirt_road.png');
+                        console.log('🔧 Make sure the file exists and the path is correct');
+                    }
+                    if (terrainType === 'sand_texture') {
+                        console.error(`🚨 SAND_TEXTURE MISSING! Using fallback rectangle at (${x}, ${y})`);
+                        console.log('Available textures:', Object.keys(this.textures.list));
+                        console.log('🔧 Expected file: src/assets/sprites/terrain/sand_texture.png');
+                        console.log('🔧 Make sure the file exists and the path is correct');
                     }
                     
                     // Create fallback colored rectangles
@@ -508,6 +572,7 @@ export class GameScene extends Phaser.Scene {
                     if (terrainType === 'rubble') color = 0x8B7355; // Brown rubble
                     else if (terrainType === 'crackled_concrete') color = 0xB0B0B0; // Gray concrete
                     else if (terrainType === 'dirt_road') color = 0xA0956F; // Dusty brown
+                    else if (terrainType === 'sand_texture') color = 0xF4A460; // Sandy brown
                     
                     tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, color);
                 }
@@ -537,6 +602,11 @@ export class GameScene extends Phaser.Scene {
                 console.log('🚁 AFTER scaling - Helicopter display size:', helicopter.displayWidth, 'x', helicopter.displayHeight);
                 console.log('🚁 Target size from config:', SpriteScaler.getSpriteConfig('crashed_helicopter'));
                 
+                // Make helicopter larger - apply additional scaling
+                const additionalScale = 1.5; // 50% larger than normal
+                helicopter.setScale(helicopter.scaleX * additionalScale, helicopter.scaleY * additionalScale);
+                console.log('🚁 AFTER additional scaling - Final display size:', helicopter.displayWidth, 'x', helicopter.displayHeight);
+                
                 // Update collision box to match new size
                 if (helicopter.body && helicopter.body.setSize) {
                     const scaledWidth = helicopter.displayWidth * 0.8;  // 80% of display size for collision
@@ -553,9 +623,12 @@ export class GameScene extends Phaser.Scene {
             // Add smoke effects to the main helicopter
             this.addHelicopterEffects(helicopter.x, helicopter.y);
             
-            // Removed helicopter tail/wreckage - keeping only the main crashed helicopter
+            // Add defensive sandbags around the crash site
+            this.createCrashSiteSandbags();
+            
             console.log('✅ Helicopter beacon and label have been removed');
             console.log('🚁 Smoke effects added to main helicopter only');
+            console.log('🛡️ Defensive sandbags added around crash site');
             
             // Simplified layout: skip additional burning wreckage and debris to reduce ground clutter
             return; // <-- no more structures after the main helicopter
@@ -657,6 +730,148 @@ export class GameScene extends Phaser.Scene {
             console.log('Crash site structures created successfully');
         } catch (error) {
             console.error('Error creating crash site structures:', error);
+        }
+    }
+    
+    createCrashSiteSandbags() {
+        console.log('Creating defensive sandbags around crash site...');
+        
+        try {
+            // Helicopter is at (1000, 750), rubble area is roughly 800-1200 x 600-900
+            // Create sandbag perimeter around the crash site with strategic entrances
+            const sandbagSpacing = 64; // Distance between sandbag groups
+            const helicopterX = 1000;
+            const helicopterY = 750;
+            
+            // Northern perimeter (leaving gaps for entrances)
+            const northernSandbags = [
+                {x: helicopterX - 200, y: helicopterY - 180}, // Left side
+                {x: helicopterX - 136, y: helicopterY - 180},
+                {x: helicopterX - 72, y: helicopterY - 180},
+                // Gap for entrance (from x-72 to x+72)
+                {x: helicopterX + 72, y: helicopterY - 180}, // Right side
+                {x: helicopterX + 136, y: helicopterY - 180},
+                {x: helicopterX + 200, y: helicopterY - 180}
+            ];
+            
+            // Southern perimeter (with two smaller entrances)
+            const southernSandbags = [
+                {x: helicopterX - 200, y: helicopterY + 180}, // Left side
+                {x: helicopterX - 136, y: helicopterY + 180},
+                // Small gap for entrance
+                {x: helicopterX - 40, y: helicopterY + 180}, // Center-left
+                {x: helicopterX + 24, y: helicopterY + 180}, // Center-right
+                // Small gap for entrance
+                {x: helicopterX + 136, y: helicopterY + 180}, // Right side
+                {x: helicopterX + 200, y: helicopterY + 180}
+            ];
+            
+            // Western perimeter (with one entrance)
+            const westernSandbags = [
+                {x: helicopterX - 250, y: helicopterY - 120}, // Top
+                {x: helicopterX - 250, y: helicopterY - 60},
+                // Gap for entrance
+                {x: helicopterX - 250, y: helicopterY + 60}, // Bottom
+                {x: helicopterX - 250, y: helicopterY + 120}
+            ];
+            
+            // Eastern perimeter (with one entrance)  
+            const easternSandbags = [
+                {x: helicopterX + 250, y: helicopterY - 120}, // Top
+                {x: helicopterX + 250, y: helicopterY - 60},
+                // Gap for entrance
+                {x: helicopterX + 250, y: helicopterY + 60}, // Bottom
+                {x: helicopterX + 250, y: helicopterY + 120}
+            ];
+            
+            // Additional corner reinforcements and fill-in sandbags
+            const additionalSandbags = [
+                // Northwest corner reinforcement
+                {x: helicopterX - 225, y: helicopterY - 150},
+                {x: helicopterX - 175, y: helicopterY - 205},
+                
+                // Northeast corner reinforcement
+                {x: helicopterX + 225, y: helicopterY - 150},
+                {x: helicopterX + 175, y: helicopterY - 205},
+                
+                // Southwest corner reinforcement
+                {x: helicopterX - 225, y: helicopterY + 150},
+                {x: helicopterX - 175, y: helicopterY + 205},
+                
+                // Southeast corner reinforcement
+                {x: helicopterX + 225, y: helicopterY + 150},
+                {x: helicopterX + 175, y: helicopterY + 205},
+                
+                // Fill some gaps in the northern perimeter (partial)
+                {x: helicopterX - 36, y: helicopterY - 180}, // Narrow the main entrance slightly
+                {x: helicopterX + 36, y: helicopterY - 180},
+                
+                // Add some inner defensive positions
+                {x: helicopterX - 150, y: helicopterY - 100}, // Inner left
+                {x: helicopterX + 150, y: helicopterY - 100}, // Inner right
+                {x: helicopterX - 150, y: helicopterY + 100}, // Inner left back
+                {x: helicopterX + 150, y: helicopterY + 100}, // Inner right back
+                
+                // Forward outposts
+                {x: helicopterX - 80, y: helicopterY - 220}, // Forward left
+                {x: helicopterX + 80, y: helicopterY - 220}, // Forward right
+            ];
+            
+            // Combine all sandbag positions
+            const allSandbagPositions = [
+                ...northernSandbags,
+                ...southernSandbags, 
+                ...westernSandbags,
+                ...easternSandbags,
+                ...additionalSandbags
+            ];
+            
+            // Create sandbag structures
+            allSandbagPositions.forEach(pos => {
+                const sandbag = this.createStructureWithFallback(pos.x, pos.y, 'sandbags', {
+                    type: 'sandbags',
+                    material: 'fabric',
+                    health: 150,
+                    destructible: true
+                }, 0xC2B280, 32, 16); // Reduced fallback size from 48x24 to 32x16
+                
+                // Apply proper scaling to make sandbags smaller
+                if (sandbag && sandbag.setScale) {
+                    SpriteScaler.autoScale(sandbag, 'sandbags', { maintainAspectRatio: true });
+                    
+                    // Make sandbags smaller - apply additional scaling
+                    const smallerScale = 0.6; // 60% of the auto-scaled size (40% smaller)
+                    sandbag.setScale(sandbag.scaleX * smallerScale, sandbag.scaleY * smallerScale);
+                    
+                    console.log(`🛡️ Sandbag scaled to: ${sandbag.displayWidth}x${sandbag.displayHeight}`);
+                }
+                
+                // Enlarge the physics body to fill the entire 64-px tile so nothing can slip through
+                if (sandbag.body && sandbag.body.setSize) {
+                    sandbag.body.setSize(64, 32, true); // full tile width, centred
+                    // Make absolutely sure the body is static & immovable
+                    sandbag.body.immovable = true;
+                    sandbag.body.moves = false;
+                    sandbag.body.pushable = false;
+                    // Sync body with the new size/offset
+                    if (typeof sandbag.body.updateFromGameObject === 'function') {
+                        sandbag.body.updateFromGameObject();
+                    }
+                }
+            });
+            
+            console.log(`Created ${allSandbagPositions.length} sandbags around crash site with multiple entrances`);
+            console.log('🛡️ Enhanced sandbag perimeter established with:');
+            console.log('   - Main northern entrance (narrowed but still accessible)');
+            console.log('   - Two southern entrances (96px each)');
+            console.log('   - Western entrance (120px wide)');
+            console.log('   - Eastern entrance (120px wide)');
+            console.log('   - Corner reinforcements for better coverage');
+            console.log('   - Inner defensive positions for layered defense');
+            console.log('   - Forward outposts for early warning');
+            
+        } catch (error) {
+            console.error('Error creating crash site sandbags:', error);
         }
     }
     
@@ -3202,4 +3417,93 @@ export class GameScene extends Phaser.Scene {
         // Keeping for compatibility but it shouldn't be called anymore
         console.warn('separateBodies called - this should not happen with proper static body colliders');
     }
+    
+    /**
+     * Debug method to visualize road layout
+     * Can be called from console: gameScene.debugRoadLayout()
+     */
+    debugRoadLayout() {
+        console.log('🛣️ ROAD LAYOUT DEBUG');
+        console.log('==================');
+        
+        const tileSize = 64;
+        const worldWidth = 2048;
+        const worldHeight = 1536;
+        
+        console.log(`World size: ${worldWidth}x${worldHeight}`);
+        console.log(`Tile size: ${tileSize}x${tileSize}`);
+        
+        // Vertical road bounds
+        console.log('\n🟦 VERTICAL ROAD:');
+        console.log(`X range: 288 to 416 (width: ${416-288}px = ${(416-288)/tileSize} tiles)`);
+        console.log(`Y range: 0 to ${worldHeight} (full height)`);
+        console.log('Rotation: 0 degrees (vertical lines - NO rotation needed)');
+        
+        // Horizontal road bounds  
+        console.log('\n🟨 HORIZONTAL ROAD:');
+        console.log(`X range: 0 to ${worldWidth} (full width)`);
+        console.log(`Y range: 544 to 672 (height: ${672-544}px = ${(672-544)/tileSize} tiles)`);
+        console.log('Rotation: 90 degrees (horizontal lines - rotated from vertical)');
+        
+        // Intersection
+        console.log('\n🟩 INTERSECTION:');
+        console.log('X range: 288 to 416');
+        console.log('Y range: 544 to 672');
+        console.log('Note: Intersection uses no rotation (vertical lines)');
+        
+        console.log('\n🎯 To test: Move player to coordinates (352, 608) for intersection center');
+        console.log('🎯 Debug: Run gameScene.debugRoadLayout() anytime to see this info');
+    }
+    
+    /**
+     * Enable seamless terrain textures (eliminates gaps completely for all terrain types)
+     * Can be called from console: gameScene.enableSeamlessTerrain()
+     */
+    enableSeamlessTerrain() {
+        console.log('🗺️ Generating seamless terrain textures for ALL terrain types...');
+        
+        try {
+            // Generate seamless textures for all terrain types
+            TerrainOptimizer.createSeamlessTerrainTextures(this);
+            
+            console.log('✅ All seamless terrain textures generated!');
+            console.log('🔄 Refresh the page to see gap-free terrain everywhere');
+            console.log('📝 Available seamless textures:');
+            console.log('   - sand_texture_seamless');
+            console.log('   - grass_texture_seamless'); 
+            console.log('   - crackled_concrete_seamless');
+            console.log('   - rubble_seamless');
+            console.log('   - dirt_road_seamless_horizontal');
+            console.log('   - dirt_road_seamless_vertical');
+            console.log('💡 To use by default: Uncomment TerrainOptimizer.createSeamlessTerrainTextures(this) in GameScene.create()');
+            
+        } catch (error) {
+            console.error('Failed to generate seamless terrain:', error);
+        }
+    }
+    
+    /**
+     * Enable seamless road textures only (legacy method for roads only)
+     * Can be called from console: gameScene.enableSeamlessRoads()
+     */
+    enableSeamlessRoads() {
+        console.log('🛣️ Generating seamless road textures...');
+        
+        try {
+            // Generate seamless road textures
+            TerrainOptimizer.createSeamlessRoadTextures(this);
+            
+            console.log('✅ Seamless road textures generated!');
+            console.log('🔄 Refresh the page to see seamless roads');
+            console.log('💡 For ALL terrain types, use: gameScene.enableSeamlessTerrain()');
+            
+        } catch (error) {
+            console.error('Failed to generate seamless roads:', error);
+        }
+    }
+}
+
+// Make GameScene accessible globally for debugging
+if (typeof window !== 'undefined') {
+    window.GameScene = GameScene;
 } 

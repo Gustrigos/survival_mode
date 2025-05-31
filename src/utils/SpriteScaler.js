@@ -27,7 +27,7 @@ export class SpriteScaler {
         
         // Military/Equipment sprites
         military_crate: { targetWidth: 32, targetHeight: 32 },
-        sandbags: { targetWidth: 48, targetHeight: 24 },
+        sandbags: { targetWidth: 32, targetHeight: 16 },
         tent: { targetWidth: 64, targetHeight: 48 },
         debris: { targetWidth: 32, targetHeight: 16 },
         
@@ -48,7 +48,17 @@ export class SpriteScaler {
         // Effects (properly sized relative to helicopter 400x250)
         smoke_puff: { targetWidth: 5, targetHeight: 5 }, // ~6% of helicopter height (much smaller)
         small_fire: { targetWidth: 12, targetHeight: 15 }, // ~6% of helicopter height
-        blood_splat: { targetWidth: 12, targetHeight: 12 }
+        blood_splat: { targetWidth: 12, targetHeight: 12 },
+        
+        // Terrain textures - standardized sizes for consistent appearance
+        sand_texture: { targetWidth: 64, targetHeight: 64 },
+        dirt_road: { targetWidth: 64, targetHeight: 64 },
+        grass_texture: { targetWidth: 64, targetHeight: 64 },
+        crackled_concrete: { targetWidth: 64, targetHeight: 64 },
+        rubble: { targetWidth: 64, targetHeight: 64 },
+        dirt_texture: { targetWidth: 64, targetHeight: 64 },
+        stone_texture: { targetWidth: 64, targetHeight: 64 },
+        water_texture: { targetWidth: 64, targetHeight: 64 }
     };
     
     /**
