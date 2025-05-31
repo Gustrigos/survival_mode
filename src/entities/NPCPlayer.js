@@ -140,6 +140,7 @@ export class NPCPlayer extends Player {
         // NOTE: Removed emergency follow logic - hold mode is now absolute
         
         // Scan for zombie targets periodically (but only if not retreating or forced to follow)
+        // Works for both follow and move modes
         if (time - this.lastTargetScanTime > this.targetScanInterval && 
             distanceToLeader <= this.squadConfig.maxSeparation && 
             !this.isRetreating) {
@@ -148,6 +149,7 @@ export class NPCPlayer extends Player {
         }
         
         // Shoot at target if we have one and not retreating or too far from leader
+        // Works for both follow and move modes
         if (this.target && this.target.active && 
             distanceToLeader <= this.squadConfig.maxSeparation && 
             !this.isRetreating) {
@@ -332,6 +334,9 @@ export class NPCPlayer extends Player {
             return;
         }
         
+        // Move mode behaves the same as follow mode for basic movement
+        // The difference is in how they respond to commands (move mode is more responsive to left-click)
+        
         // Calculate desired position based on formation offset
         const mainPlayer = this.scene.player;
         let desiredX, desiredY;
@@ -355,9 +360,10 @@ export class NPCPlayer extends Player {
         const followThreshold = this.squadConfig.followDistance + 20; // Add buffer to follow distance
         
         // Determine if we should follow based on distance and combat status
+        // Both follow and move modes use the same logic
         const shouldFollow = this.isRetreating || // Always follow when retreating
-                           (this.squadMode !== 'hold' && distanceToDesired > followThreshold) ||
-                           distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow mode only
+                           ((this.squadMode === 'follow' || this.squadMode === 'move') && distanceToDesired > followThreshold) ||
+                           distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow/move mode only
         
         // Only move if outside the dead zone AND should follow
         if (shouldFollow && distanceToDesired > deadZone) {
@@ -889,12 +895,23 @@ export class NPCPlayer extends Player {
         // Called when squad leader gives new commands
         console.log(`${this.squadConfig.name} received squad command - Mode: ${this.squadMode}, PingTarget: ${!!this.pingTarget}, PingLocation: ${!!this.pingLocation}`);
         
-        // Set hold position when switching to hold mode
+        // Handle mode transitions
         if (this.squadMode === 'hold' && !this.holdPosition) {
+            // Switching TO hold mode: set hold position at current location
             this.holdPosition = { x: this.x, y: this.y };
             console.log(`${this.squadConfig.name} setting hold position at (${this.x.toFixed(0)}, ${this.y.toFixed(0)})`);
         } else if (this.squadMode === 'follow') {
+            // Switching TO follow mode: clear any hold positions (from both hold mode and move commands)
             this.holdPosition = null;
+            console.log(`${this.squadConfig.name} cleared hold position, resuming follow mode`);
+        } else if (this.squadMode === 'move') {
+            // Switching TO move mode: clear any existing hold positions from previous hold commands
+            // (but keep hold positions created by move commands)
+            if (this.holdPosition && !this.isExecutingPing) {
+                // Only clear if we're not currently executing a move command
+                this.holdPosition = null;
+                console.log(`${this.squadConfig.name} cleared previous hold position, ready for move commands`);
+            }
         }
         
         // Set ping execution flag
@@ -928,8 +945,8 @@ export class NPCPlayer extends Player {
             return true; // Skip normal AI
         }
         
-        // PRIORITY 2: Execute ping location (move to position)
-        if (this.pingLocation && this.squadMode === 'follow') {
+        // PRIORITY 2: Execute ping location (move to position) - works in both follow and move modes
+        if (this.pingLocation && (this.squadMode === 'follow' || this.squadMode === 'move')) {
             const distanceToPing = Phaser.Math.Distance.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
             
             if (distanceToPing > 30) { // Move towards ping location
@@ -952,9 +969,18 @@ export class NPCPlayer extends Player {
                 
                 return true; // Skip normal AI
             } else {
-                // Reached ping location, clear it
-                this.pingLocation = null;
-                this.isExecutingPing = false;
+                // Reached ping location
+                if (this.squadMode === 'move') {
+                    // In move mode: convert ping location to hold position
+                    this.holdPosition = { x: this.pingLocation.x, y: this.pingLocation.y };
+                    this.pingLocation = null;
+                    this.isExecutingPing = false;
+                    console.log(`${this.squadConfig.name} reached move destination, now holding at (${this.holdPosition.x.toFixed(0)}, ${this.holdPosition.y.toFixed(0)})`);
+                } else {
+                    // In follow mode: just clear the ping and resume following
+                    this.pingLocation = null;
+                    this.isExecutingPing = false;
+                }
             }
         }
         
@@ -1006,6 +1032,54 @@ export class NPCPlayer extends Player {
             }
         }
         
+        // PRIORITY 4: Move mode - handle hold positions created by move commands
+        if (this.squadMode === 'move' && this.holdPosition) {
+            const distanceToHold = Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+            
+            if (distanceToHold > 25) { // Return to move destination if moved too far
+                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+                const speed = 120; // Moderate speed to return to position
+                
+                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                this.updateDirectionFromMovement(angle);
+                this.setMoving(true);
+                
+                // Show we're returning to move destination
+                if (this.nameTag && this.nameTag.active && !this.isDead) {
+                    try {
+                        this.nameTag.setText(`${this.squadConfig.name} [MOVE]`);
+                        this.nameTag.setTint(0x00ffff); // Cyan tint for move mode
+                    } catch (error) {
+                        console.warn(`Error updating name tag for move hold: ${this.squadConfig.name}`, error);
+                    }
+                }
+                
+                return true; // Skip normal AI
+            } else {
+                // At move destination, just scan for targets but don't move
+                this.setVelocity(0, 0);
+                this.setMoving(false);
+                
+                // Scan for targets while holding at move position
+                this.scanForTargets();
+                if (this.target && this.target.active) {
+                    this.aimAndShoot();
+                }
+                
+                // Show we're holding at move destination
+                if (this.nameTag && this.nameTag.active && !this.isDead) {
+                    try {
+                        this.nameTag.setText(`${this.squadConfig.name} [MOVE]`);
+                        this.nameTag.setTint(0x00ffff); // Cyan tint for move mode
+                    } catch (error) {
+                        console.warn(`Error updating name tag for move hold stationary: ${this.squadConfig.name}`, error);
+                    }
+                }
+                
+                return true; // Skip normal follow AI
+            }
+        }
+        
         // If not executing any specific command, restore normal name tag
         if (!this.isDead && this.active) {
             this.updateNameTagWithCommand();
@@ -1026,6 +1100,9 @@ export class NPCPlayer extends Player {
             if (this.squadMode === 'hold') {
                 this.nameTag.setText(`${this.squadConfig.name} [H]`); // H for Hold
                 this.nameTag.setTint(0xffaa00); // Light orange for hold mode
+            } else if (this.squadMode === 'move') {
+                this.nameTag.setText(`${this.squadConfig.name} [M]`); // M for Move
+                this.nameTag.setTint(0x00ffff); // Cyan for move mode
             }
         } catch (error) {
             console.warn(`Error updating name tag for ${this.squadConfig.name}:`, error);

@@ -188,12 +188,18 @@ export class GameScene extends Phaser.Scene {
         this.createSquad();
         
         // === SQUAD COMMAND SYSTEM ===
-        this.squadMode = 'follow'; // 'follow' or 'hold'
+        this.squadMode = 'follow'; // 'follow', 'hold', or 'move'
         this.pingTarget = null; // Current ping target for focus fire
         this.pingMarker = null; // Visual marker for ping
         this.squadModeText = null; // UI text showing current mode
         this.squadCommandsInitialized = false; // Flag to prevent early updates
         this.qKeyWasDown = false; // Track Q key state for hold behavior
+        
+        // Move mode cursor elements
+        this.moveCursor = null;
+        this.moveCursorH = null;
+        this.moveCursorV = null;
+        this.moveCursorDot = null;
         
         // Create squad mode UI indicator
         this.createSquadModeUI();
@@ -205,7 +211,15 @@ export class GameScene extends Phaser.Scene {
         this.input.on('pointerdown', (pointer) => {
             if (pointer.rightButtonDown()) {
                 this.handleRightClick(pointer);
+            } else if (pointer.leftButtonDown() && this.squadMode === 'move') {
+                // Left-click in move mode - send squad to that location
+                this.handleLeftClickMove(pointer);
             }
+        });
+        
+        // Set up pointer movement for move cursor
+        this.input.on('pointermove', (pointer) => {
+            this.updateMoveCursor(pointer);
         });
         
         // Mark squad commands as ready
@@ -808,6 +822,9 @@ export class GameScene extends Phaser.Scene {
         
         // Update debug text
         this.updateDebugText();
+        
+        // Update squad status in HTML UI
+        this.updateHTMLSquadStatus();
         
         // === SQUAD COMMAND CLEANUP ===
         // Clean up ping target if zombie dies
@@ -1806,16 +1823,11 @@ export class GameScene extends Phaser.Scene {
         // Clear existing content
         squadMembersDiv.innerHTML = '';
         
-        // Show all squad members (including dead ones) to track casualties
+        // Track names of active squad members to prevent duplicates
+        const activeSquadNames = new Set();
+        
+        // Show active squad members first
         if (this.squadMembers) {
-            // Get all squad members that were created (including destroyed ones)
-            const allSquadMembers = [
-                ...this.squadMembers.children.entries,
-                // Also track destroyed squad members by checking our initial squad configs
-                ...this.getDestroyedSquadMembers()
-            ];
-            
-            // If we have active squad members, show them
             this.squadMembers.children.entries.forEach((squadMember, index) => {
                 if (squadMember) { // Check if exists (active or inactive)
                     const memberDiv = document.createElement('div');
@@ -1826,6 +1838,9 @@ export class GameScene extends Phaser.Scene {
                     const maxHealth = squadMember.maxHealth;
                     const healthPercent = squadMember.active ? (health / maxHealth) : 0;
                     const color = `#${squadMember.squadConfig.color.toString(16).padStart(6, '0')}`;
+                    
+                    // Add to active names set
+                    activeSquadNames.add(name);
                     
                     // Show different styling for dead vs alive
                     const statusClass = squadMember.active && health > 0 ? '' : ' style="opacity: 0.5;"';
@@ -1842,26 +1857,31 @@ export class GameScene extends Phaser.Scene {
                     squadMembersDiv.appendChild(memberDiv);
                 }
             });
-            
-            // Also show destroyed squad members
-            const destroyedMembers = this.getDestroyedSquadMembers();
-            destroyedMembers.forEach(memberInfo => {
-                const memberDiv = document.createElement('div');
-                memberDiv.className = 'squad-member';
-                
-                const color = `#${memberInfo.color.toString(16).padStart(6, '0')}`;
-                
-                memberDiv.innerHTML = `
-                    <span style="color: ${color}; font-weight: bold; opacity: 0.5;">${memberInfo.name} [KIA]</span>
-                    <div class="squad-health-bar" style="opacity: 0.5;">
-                        <div class="squad-health-fill" style="width: 0%;"></div>
-                    </div>
-                    <span style="opacity: 0.5;">0/${memberInfo.maxHealth}</span>
-                `;
-                
-                squadMembersDiv.appendChild(memberDiv);
-            });
         }
+        
+        // Only show destroyed squad members that are NOT currently active (prevent duplicates)
+        const destroyedMembers = this.getDestroyedSquadMembers();
+        destroyedMembers.forEach(memberInfo => {
+            // Skip if this member is currently active
+            if (activeSquadNames.has(memberInfo.name)) {
+                return; // Don't show duplicate entry
+            }
+            
+            const memberDiv = document.createElement('div');
+            memberDiv.className = 'squad-member';
+            
+            const color = `#${memberInfo.color.toString(16).padStart(6, '0')}`;
+            
+            memberDiv.innerHTML = `
+                <span style="color: ${color}; font-weight: bold; opacity: 0.5;">${memberInfo.name} [KIA]</span>
+                <div class="squad-health-bar" style="opacity: 0.5;">
+                    <div class="squad-health-fill" style="width: 0%;"></div>
+                </div>
+                <span style="opacity: 0.5;">0/${memberInfo.maxHealth}</span>
+            `;
+            
+            squadMembersDiv.appendChild(memberDiv);
+        });
     }
     
     // Track destroyed squad members for HUD display
@@ -2180,31 +2200,107 @@ export class GameScene extends Phaser.Scene {
         const centerX = this.cameras.main.width / 2;
         const centerY = this.cameras.main.height / 2;
         
+        // Store center for mouse calculations
+        this.commandWheelCenter = { x: centerX, y: centerY };
+        this.selectedCommand = null;
+        
         // Background circle
-        this.commandWheelBg = this.add.circle(centerX, centerY, 80, 0x000000, 0.8);
-        this.commandWheelBg.setStrokeStyle(3, 0xffffff);
+        this.commandWheelBg = this.add.circle(centerX, centerY, 120, 0x000000, 0.8);
+        this.commandWheelBg.setStrokeStyle(4, 0xffffff);
         this.commandWheelBg.setDepth(3000);
         this.commandWheelBg.setScrollFactor(0);
         this.commandWheelElements.push(this.commandWheelBg);
         
-        // Current mode text
-        this.currentModeText = this.add.text(centerX, centerY - 30, `${this.squadMode.toUpperCase()}`, {
-            fontSize: '18px',
-            fill: this.squadMode === 'follow' ? '#00ff00' : '#ff6600',
+        // Title text
+        this.commandTitleText = this.add.text(centerX, centerY - 80, 'RALLY POINT', {
+            fontSize: '16px',
+            fill: '#ffffff',
             fontFamily: 'Arial',
             fontWeight: 'bold',
             stroke: '#000000',
             strokeThickness: 2
         });
-        this.currentModeText.setOrigin(0.5);
-        this.currentModeText.setDepth(3001);
-        this.currentModeText.setScrollFactor(0);
-        this.commandWheelElements.push(this.currentModeText);
+        this.commandTitleText.setOrigin(0.5);
+        this.commandTitleText.setDepth(3001);
+        this.commandTitleText.setScrollFactor(0);
+        this.commandWheelElements.push(this.commandTitleText);
+        
+        // Create radial command zones with directional indicators
+        
+        // LEFT - FOLLOW (Green)
+        this.followZone = this.add.graphics();
+        this.followZone.setDepth(3001);
+        this.followZone.setScrollFactor(0);
+        this.followZone.fillStyle(0x00ff00, 0.3);
+        this.followZone.fillCircle(centerX - 60, centerY, 35);
+        this.followZone.lineStyle(2, 0x00ff00, 0.8);
+        this.followZone.strokeCircle(centerX - 60, centerY, 35);
+        this.commandWheelElements.push(this.followZone);
+        
+        this.followText = this.add.text(centerX - 60, centerY, 'FOLLOW', {
+            fontSize: '10px',
+            fill: '#00ff00',
+            fontFamily: 'Arial',
+            fontWeight: 'bold'
+        });
+        this.followText.setOrigin(0.5);
+        this.followText.setDepth(3002);
+        this.followText.setScrollFactor(0);
+        this.commandWheelElements.push(this.followText);
+        
+        // RIGHT - HOLD (Orange)
+        this.holdZone = this.add.graphics();
+        this.holdZone.setDepth(3001);
+        this.holdZone.setScrollFactor(0);
+        this.holdZone.fillStyle(0xff6600, 0.3);
+        this.holdZone.fillCircle(centerX + 60, centerY, 35);
+        this.holdZone.lineStyle(2, 0xff6600, 0.8);
+        this.holdZone.strokeCircle(centerX + 60, centerY, 35);
+        this.commandWheelElements.push(this.holdZone);
+        
+        this.holdText = this.add.text(centerX + 60, centerY, 'HOLD', {
+            fontSize: '10px',
+            fill: '#ff6600',
+            fontFamily: 'Arial',
+            fontWeight: 'bold'
+        });
+        this.holdText.setOrigin(0.5);
+        this.holdText.setDepth(3002);
+        this.holdText.setScrollFactor(0);
+        this.commandWheelElements.push(this.holdText);
+        
+        // BOTTOM - MOVE (Cyan)
+        this.moveZone = this.add.graphics();
+        this.moveZone.setDepth(3001);
+        this.moveZone.setScrollFactor(0);
+        this.moveZone.fillStyle(0x00ffff, 0.3);
+        this.moveZone.fillCircle(centerX, centerY + 60, 35);
+        this.moveZone.lineStyle(2, 0x00ffff, 0.8);
+        this.moveZone.strokeCircle(centerX, centerY + 60, 35);
+        this.commandWheelElements.push(this.moveZone);
+        
+        this.moveText = this.add.text(centerX, centerY + 60, 'MOVE', {
+            fontSize: '10px',
+            fill: '#00ffff',
+            fontFamily: 'Arial',
+            fontWeight: 'bold'
+        });
+        this.moveText.setOrigin(0.5);
+        this.moveText.setDepth(3002);
+        this.moveText.setScrollFactor(0);
+        this.commandWheelElements.push(this.moveText);
+        
+        // Current selection indicator (invisible initially)
+        this.selectionIndicator = this.add.circle(centerX, centerY, 40, 0xffffff, 0);
+        this.selectionIndicator.setStrokeStyle(4, 0xffffff, 0.8);
+        this.selectionIndicator.setDepth(3003);
+        this.selectionIndicator.setScrollFactor(0);
+        this.commandWheelElements.push(this.selectionIndicator);
         
         // Instructions
-        this.commandInstructions = this.add.text(centerX, centerY, 'Click to Toggle', {
-            fontSize: '12px',
-            fill: '#ffffff',
+        this.commandInstructions = this.add.text(centerX, centerY + 100, 'Move mouse to select • Release Q to confirm', {
+            fontSize: '10px',
+            fill: '#cccccc',
             fontFamily: 'Arial',
             stroke: '#000000',
             strokeThickness: 1
@@ -2213,39 +2309,6 @@ export class GameScene extends Phaser.Scene {
         this.commandInstructions.setDepth(3001);
         this.commandInstructions.setScrollFactor(0);
         this.commandWheelElements.push(this.commandInstructions);
-        
-        // Toggle button
-        this.toggleButton = this.add.rectangle(centerX, centerY + 30, 60, 20, 0x666666);
-        this.toggleButton.setStrokeStyle(2, 0xffffff);
-        this.toggleButton.setDepth(3001);
-        this.toggleButton.setScrollFactor(0);
-        this.toggleButton.setInteractive({ useHandCursor: true });
-        this.commandWheelElements.push(this.toggleButton);
-        
-        // Toggle button text
-        this.toggleButtonText = this.add.text(centerX, centerY + 30, 'TOGGLE', {
-            fontSize: '10px',
-            fill: '#ffffff',
-            fontFamily: 'Arial',
-            fontWeight: 'bold'
-        });
-        this.toggleButtonText.setOrigin(0.5);
-        this.toggleButtonText.setDepth(3002);
-        this.toggleButtonText.setScrollFactor(0);
-        this.commandWheelElements.push(this.toggleButtonText);
-        
-        // Button interactions
-        this.toggleButton.on('pointerdown', () => {
-            this.toggleSquadModeSimple();
-        });
-        
-        this.toggleButton.on('pointerover', () => {
-            this.toggleButton.setFillStyle(0x888888);
-        });
-        
-        this.toggleButton.on('pointerout', () => {
-            this.toggleButton.setFillStyle(0x666666);
-        });
         
         // Set flag
         this.commandWheel = true;
@@ -2261,11 +2324,128 @@ export class GameScene extends Phaser.Scene {
             });
         });
         
-        console.log('🎯 Simple command wheel opened');
+        // Start listening for mouse movement
+        this.input.on('pointermove', this.updateCommandWheelSelection, this);
+        
+        console.log('🎯 Radial command wheel opened');
+    }
+    
+    updateCommandWheelSelection(pointer) {
+        if (!this.commandWheel || !this.commandWheelCenter) return;
+        
+        const angle = Phaser.Math.Angle.Between(this.commandWheelCenter.x, this.commandWheelCenter.y, pointer.x, pointer.y);
+        const distance = Phaser.Math.Distance.Between(this.commandWheelCenter.x, this.commandWheelCenter.y, pointer.x, pointer.y);
+        
+        // Only respond to mouse movement within the wheel
+        if (distance < 30 || distance > 120) {
+            this.selectedCommand = null;
+            this.selectionIndicator.setAlpha(0);
+            return;
+        }
+        
+        // Convert angle to degrees and normalize to 0-360
+        let degrees = Phaser.Math.RadToDeg(angle);
+        if (degrees < 0) degrees += 360;
+        
+        // Determine which command zone the mouse is in
+        let newCommand = null;
+        let targetX = this.commandWheelCenter.x;
+        let targetY = this.commandWheelCenter.y;
+        
+        if (degrees >= 315 || degrees < 45) {
+            // RIGHT - HOLD
+            newCommand = 'hold';
+            targetX = this.commandWheelCenter.x + 60;
+            targetY = this.commandWheelCenter.y;
+        } else if (degrees >= 135 && degrees < 225) {
+            // LEFT - FOLLOW  
+            newCommand = 'follow';
+            targetX = this.commandWheelCenter.x - 60;
+            targetY = this.commandWheelCenter.y;
+        } else if (degrees >= 45 && degrees < 135) {
+            // BOTTOM - MOVE
+            newCommand = 'move';
+            targetX = this.commandWheelCenter.x;
+            targetY = this.commandWheelCenter.y + 60;
+        }
+        
+        // Update selection if changed
+        if (newCommand && newCommand !== this.selectedCommand) {
+            this.selectedCommand = newCommand;
+            
+            // Move selection indicator to the selected zone
+            this.selectionIndicator.setPosition(targetX, targetY);
+            this.selectionIndicator.setAlpha(0.6);
+            
+            // Highlight the selected zone
+            this.highlightSelectedZone(newCommand);
+            
+            console.log(`🎯 Selected command: ${newCommand.toUpperCase()}`);
+        }
+    }
+    
+    highlightSelectedZone(command) {
+        // Reset all zones to normal
+        this.followZone.clear();
+        this.followZone.fillStyle(0x00ff00, 0.3);
+        this.followZone.fillCircle(this.commandWheelCenter.x - 60, this.commandWheelCenter.y, 35);
+        this.followZone.lineStyle(2, 0x00ff00, 0.8);
+        this.followZone.strokeCircle(this.commandWheelCenter.x - 60, this.commandWheelCenter.y, 35);
+        
+        this.holdZone.clear();
+        this.holdZone.fillStyle(0xff6600, 0.3);
+        this.holdZone.fillCircle(this.commandWheelCenter.x + 60, this.commandWheelCenter.y, 35);
+        this.holdZone.lineStyle(2, 0xff6600, 0.8);
+        this.holdZone.strokeCircle(this.commandWheelCenter.x + 60, this.commandWheelCenter.y, 35);
+        
+        this.moveZone.clear();
+        this.moveZone.fillStyle(0x00ffff, 0.3);
+        this.moveZone.fillCircle(this.commandWheelCenter.x, this.commandWheelCenter.y + 60, 35);
+        this.moveZone.lineStyle(2, 0x00ffff, 0.8);
+        this.moveZone.strokeCircle(this.commandWheelCenter.x, this.commandWheelCenter.y + 60, 35);
+        
+        // Highlight selected zone
+        if (command === 'follow') {
+            this.followZone.clear();
+            this.followZone.fillStyle(0x00ff00, 0.6);
+            this.followZone.fillCircle(this.commandWheelCenter.x - 60, this.commandWheelCenter.y, 35);
+            this.followZone.lineStyle(4, 0x00ff00, 1);
+            this.followZone.strokeCircle(this.commandWheelCenter.x - 60, this.commandWheelCenter.y, 35);
+        } else if (command === 'hold') {
+            this.holdZone.clear();
+            this.holdZone.fillStyle(0xff6600, 0.6);
+            this.holdZone.fillCircle(this.commandWheelCenter.x + 60, this.commandWheelCenter.y, 35);
+            this.holdZone.lineStyle(4, 0xff6600, 1);
+            this.holdZone.strokeCircle(this.commandWheelCenter.x + 60, this.commandWheelCenter.y, 35);
+        } else if (command === 'move') {
+            this.moveZone.clear();
+            this.moveZone.fillStyle(0x00ffff, 0.6);
+            this.moveZone.fillCircle(this.commandWheelCenter.x, this.commandWheelCenter.y + 60, 35);
+            this.moveZone.lineStyle(4, 0x00ffff, 1);
+            this.moveZone.strokeCircle(this.commandWheelCenter.x, this.commandWheelCenter.y + 60, 35);
+        }
     }
     
     hideCommandWheel() {
         if (!this.commandWheel || !this.commandWheelElements) return;
+        
+        // Stop listening for mouse movement
+        this.input.off('pointermove', this.updateCommandWheelSelection, this);
+        
+        // If we have a selected command, execute it
+        if (this.selectedCommand) {
+            // For move command, activate one-shot mode
+            if (this.selectedCommand === 'move') {
+                this.moveCommandActive = true;
+                this.showMoveCursor();
+            } else {
+                this.hideMoveCursor();
+                this.moveCommandActive = false;
+            }
+            
+            // Apply the selected command
+            this.applyRadialCommand(this.selectedCommand);
+        }
         
         // Fade out and destroy all elements
         this.commandWheelElements.forEach(element => {
@@ -2288,21 +2468,27 @@ export class GameScene extends Phaser.Scene {
         this.commandWheel = null;
         this.commandWheelElements = [];
         this.commandWheelBg = null;
-        this.currentModeText = null;
+        this.commandTitleText = null;
         this.commandInstructions = null;
-        this.toggleButton = null;
-        this.toggleButtonText = null;
+        this.followZone = null;
+        this.followText = null;
+        this.holdZone = null;
+        this.holdText = null;
+        this.moveZone = null;
+        this.moveText = null;
+        this.selectionIndicator = null;
+        this.selectedCommand = null;
+        this.commandWheelCenter = null;
         
-        console.log('🎯 Simple command wheel closed');
+        console.log('🎯 Radial command wheel closed');
     }
     
-    toggleSquadModeSimple() {
-        // Simple toggle between follow and hold
+    applyRadialCommand(command) {
         const oldMode = this.squadMode;
-        this.squadMode = this.squadMode === 'follow' ? 'hold' : 'follow';
+        this.squadMode = command;
         
         // Clear any existing ping when changing modes
-        if (this.squadMode === 'follow') {
+        if (command === 'follow' || command === 'hold') {
             this.clearPing();
         }
         
@@ -2312,13 +2498,51 @@ export class GameScene extends Phaser.Scene {
         // Update UI
         this.updateSquadModeUI();
         
-        // Update command wheel display safely
+        console.log(`🎯 Squad mode changed from ${oldMode.toUpperCase()} to ${command.toUpperCase()}`);
+    }
+    
+    selectCommand(mode) {
+        if (mode === 'cancel') {
+            return;
+        }
+        
+        const oldMode = this.squadMode;
+        this.squadMode = mode;
+        
+        // Clear any existing ping when changing modes
+        if (mode === 'follow' || mode === 'hold') {
+            this.clearPing();
+        }
+        
+        // Show/hide cursor based on mode
+        if (mode === 'move') {
+            this.showMoveCursor();
+        } else {
+            this.hideMoveCursor();
+        }
+        
+        // Update squad members' behavior
+        this.updateSquadBehavior();
+        
+        // Update UI
+        this.updateSquadModeUI();
+        
+        // Update command wheel display if it's open
+        this.updateCommandWheelDisplay();
+        
+        console.log(`🎯 Squad mode changed from ${oldMode.toUpperCase()} to ${mode.toUpperCase()}`);
+    }
+    
+    updateCommandWheelDisplay() {
+        if (!this.commandWheel) return;
+        
+        // Update current mode text
         if (this.currentModeText && this.currentModeText.active) {
             try {
-                this.currentModeText.setText(`${this.squadMode.toUpperCase()}`);
-                this.currentModeText.setFill(this.squadMode === 'follow' ? '#00ff00' : '#ff6600');
+                this.currentModeText.setText(`Current: ${this.squadMode.toUpperCase()}`);
+                this.currentModeText.setFill(this.getModeColor(this.squadMode));
                 
-                // Brief highlight effect to show the change
+                // Brief highlight effect
                 this.currentModeText.setScale(1.2);
                 this.tweens.add({
                     targets: this.currentModeText,
@@ -2332,17 +2556,155 @@ export class GameScene extends Phaser.Scene {
             }
         }
         
-        console.log(`🎯 Squad mode toggled from ${oldMode.toUpperCase()} to ${this.squadMode.toUpperCase()}`);
+        // Update button appearances
+        this.updateButtonAppearance(this.followButton, this.followButtonText, 'follow', '#00ff00');
+        this.updateButtonAppearance(this.holdButton, this.holdButtonText, 'hold', '#ff6600');
+        this.updateButtonAppearance(this.moveButton, this.moveButtonText, 'move', '#00ffff');
     }
     
-    selectCommand(mode) {
-        // This method is no longer used but keeping for compatibility
-        if (mode === 'cancel') {
-            return;
-        }
+    updateButtonAppearance(button, buttonText, mode, color) {
+        if (!button || !button.active || !buttonText || !buttonText.active) return;
         
-        this.squadMode = mode;
-        this.updateSquadBehavior();
+        const isActive = this.squadMode === mode;
+        
+        try {
+            button.setFillStyle(isActive ? 0x444444 : 0x222222);
+            button.setStrokeStyle(2, isActive ? color : 0x666666);
+            buttonText.setFill(isActive ? color : '#cccccc');
+        } catch (error) {
+            console.warn(`Error updating ${mode} button appearance:`, error);
+        }
+    }
+    
+    showMoveCursor() {
+        // Create crosshair cursor that follows mouse
+        if (this.moveCursor) return; // Already showing
+        
+        this.moveCursor = this.add.group();
+        
+        // Create crosshair lines
+        const crosshairColor = 0x00ffff;
+        const crosshairSize = 20;
+        
+        // Horizontal line
+        this.moveCursorH = this.add.rectangle(0, 0, crosshairSize, 2, crosshairColor, 0.8);
+        this.moveCursorH.setDepth(4000);
+        this.moveCursor.add(this.moveCursorH);
+        
+        // Vertical line
+        this.moveCursorV = this.add.rectangle(0, 0, 2, crosshairSize, crosshairColor, 0.8);
+        this.moveCursorV.setDepth(4000);
+        this.moveCursor.add(this.moveCursorV);
+        
+        // Center dot
+        this.moveCursorDot = this.add.circle(0, 0, 3, crosshairColor, 0.6);
+        this.moveCursorDot.setDepth(4000);
+        this.moveCursor.add(this.moveCursorDot);
+        
+        console.log('🎯 Move cursor activated');
+    }
+    
+    hideMoveCursor() {
+        if (this.moveCursor) {
+            this.moveCursor.destroy(true);
+            this.moveCursor = null;
+            this.moveCursorH = null;
+            this.moveCursorV = null;
+            this.moveCursorDot = null;
+            console.log('🎯 Move cursor deactivated');
+        }
+    }
+
+    handleLeftClickMove(pointer) {
+        // Only process left click if move command is active
+        if (!this.moveCommandActive) return;
+        
+        // Convert screen coordinates to world coordinates
+        const worldX = this.cameras.main.scrollX + pointer.x;
+        const worldY = this.cameras.main.scrollY + pointer.y;
+        
+        // Send squad to this location
+        this.setPingLocation(worldX, worldY);
+        console.log(`🎯 Move command: Squad ordered to (${worldX.toFixed(0)}, ${worldY.toFixed(0)})`);
+        
+        // Create visual feedback for the move command
+        this.createMoveCommandFeedback(worldX, worldY);
+        
+        // Disable move command after one use (one-shot behavior)
+        this.moveCommandActive = false;
+        this.hideMoveCursor();
+        
+        // Switch back to follow mode after move command is executed
+        this.squadMode = 'follow';
         this.updateSquadModeUI();
+        
+        console.log('🎯 Move command executed, switched back to Follow mode');
+    }
+    
+    updateMoveCursor(pointer) {
+        // Only update cursor if move command is active and cursor exists
+        if (!this.moveCommandActive || !this.moveCursor) return;
+        
+        // Convert screen coordinates to world coordinates
+        const worldX = this.cameras.main.scrollX + pointer.x;
+        const worldY = this.cameras.main.scrollY + pointer.y;
+        
+        // Update cursor position
+        if (this.moveCursorH && this.moveCursorH.active) {
+            this.moveCursorH.setPosition(worldX, worldY);
+        }
+        if (this.moveCursorV && this.moveCursorV.active) {
+            this.moveCursorV.setPosition(worldX, worldY);
+        }
+        if (this.moveCursorDot && this.moveCursorDot.active) {
+            this.moveCursorDot.setPosition(worldX, worldY);
+        }
+    }
+    
+    createMoveCommandFeedback(x, y) {
+        // Create a brief visual indicator where the move command was issued
+        const feedback = this.add.circle(x, y, 15, 0x00ffff, 0.5);
+        feedback.setDepth(1000);
+        feedback.setStrokeStyle(3, 0x00ffff);
+        
+        // Animate the feedback
+        this.tweens.add({
+            targets: feedback,
+            scaleX: 2,
+            scaleY: 2,
+            alpha: 0,
+            duration: 800,
+            ease: 'Power2',
+            onComplete: () => {
+                if (feedback && feedback.active) {
+                    feedback.destroy();
+                }
+            }
+        });
+        
+        // Add text indicator
+        const feedbackText = this.add.text(x, y - 30, 'MOVE HERE', {
+            fontSize: '12px',
+            fill: '#00ffff',
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        feedbackText.setOrigin(0.5);
+        feedbackText.setDepth(1001);
+        
+        this.tweens.add({
+            targets: feedbackText,
+            y: feedbackText.y - 20,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Power2',
+            onComplete: () => {
+                if (feedbackText && feedbackText.active) {
+                    feedbackText.destroy();
+                }
+            }
+        });
     }
 } 
