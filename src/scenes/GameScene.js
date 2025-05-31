@@ -1467,32 +1467,106 @@ export class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
         
-        // NEW: Universal bullet collision detection for friendly fire prevention
+        // Universal bullet collision detection for friendly fire prevention
         this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
         this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
         
-        // Solid collisions with structures (existing)
+        // Solid collisions with structures (keep these - important for gameplay)
         this.physics.add.collider(this.player, this.structures);
         this.physics.add.collider(this.squadMembers, this.structures);
         this.physics.add.collider(this.zombies, this.structures, this.zombieHitStructure, null, this);
         
-        // NEW: Solid entity-to-entity collisions (entities can't pass through each other)
-        // Player vs Squad Members - solid collision
-        this.physics.add.collider(this.player, this.squadMembers);
-        
-        // Player vs Zombies - solid collision (in addition to damage overlap)
+        // Combat collisions - Player vs Zombies (solid collision for knockback)
         this.physics.add.collider(this.player, this.zombies);
         
-        // Squad Members vs Squad Members - solid collision (NPCs can't pass through each other)
-        this.physics.add.collider(this.squadMembers, this.squadMembers);
-        
-        // Squad Members vs Zombies - solid collision (in addition to damage overlap)
+        // Combat collisions - Squad Members vs Zombies (solid collision for combat dynamics)
         this.physics.add.collider(this.squadMembers, this.zombies);
         
-        // Zombies vs Zombies - solid collision (zombies can't pass through each other)
+        // Zombie vs Zombie collisions (keep for zombie horde behavior)
         this.physics.add.collider(this.zombies, this.zombies);
         
-        console.log('Collisions set up with structures, squad members, solid entity physics, and universal bullet collision detection');
+        // IMPROVED FRIENDLY COLLISIONS - smaller collision bodies, less pushy
+        // Use custom collision handlers to reduce bouncing while preventing overlap
+        this.physics.add.collider(this.player, this.squadMembers, this.handleFriendlyCollision, null, this);
+        this.physics.add.collider(this.squadMembers, this.squadMembers, this.handleSquadCollision, null, this);
+        
+        console.log('Collisions set up with improved friendly collision handling');
+    }
+    
+    // Custom collision handler for player vs squad members
+    handleFriendlyCollision(player, squadMember) {
+        // Reduce the collision impact to make it less pushy
+        if (player.body && squadMember.body) {
+            // Apply very gentle separation to prevent stacking
+            const distance = Phaser.Math.Distance.Between(player.x, player.y, squadMember.x, squadMember.y);
+            
+            if (distance < 25 && distance > 0) { // Only when very close
+                // Calculate gentle push direction
+                const angle = Phaser.Math.Angle.Between(player.x, player.y, squadMember.x, squadMember.y);
+                const pushForce = 30; // Very gentle
+                
+                // Push squad member away slightly
+                const pushX = Math.cos(angle) * pushForce;
+                const pushY = Math.sin(angle) * pushForce;
+                
+                squadMember.body.setVelocity(
+                    squadMember.body.velocity.x + pushX,
+                    squadMember.body.velocity.y + pushY
+                );
+            }
+            
+            // Reduce bounce for smoother interaction
+            const originalBounce = squadMember.body.bounce;
+            squadMember.body.setBounce(0.05); // Very low bounce
+            
+            // Reset bounce after a short time
+            this.time.delayedCall(100, () => {
+                if (squadMember.body && squadMember.active) {
+                    squadMember.body.setBounce(originalBounce.x, originalBounce.y);
+                }
+            });
+        }
+    }
+    
+    // Custom collision handler for squad member vs squad member
+    handleSquadCollision(squadMember1, squadMember2) {
+        // Apply gentle separation when squad members get too close
+        const distance = Phaser.Math.Distance.Between(squadMember1.x, squadMember1.y, squadMember2.x, squadMember2.y);
+        
+        if (distance < 20 && distance > 0) { // Only when very close
+            // Calculate separation direction
+            const angle = Phaser.Math.Angle.Between(squadMember1.x, squadMember1.y, squadMember2.x, squadMember2.y);
+            const pushForce = 25; // Gentle separation force
+            
+            // Push both squad members apart
+            const pushX = Math.cos(angle) * pushForce;
+            const pushY = Math.sin(angle) * pushForce;
+            
+            squadMember1.body.setVelocity(
+                squadMember1.body.velocity.x - pushX * 0.5,
+                squadMember1.body.velocity.y - pushY * 0.5
+            );
+            
+            squadMember2.body.setVelocity(
+                squadMember2.body.velocity.x + pushX * 0.5,
+                squadMember2.body.velocity.y + pushY * 0.5
+            );
+        }
+        
+        // Reduce velocities to minimize bouncing
+        if (squadMember1.body && squadMember2.body) {
+            const damping = 0.8; // Less aggressive damping
+            
+            squadMember1.body.setVelocity(
+                squadMember1.body.velocity.x * damping,
+                squadMember1.body.velocity.y * damping
+            );
+            
+            squadMember2.body.setVelocity(
+                squadMember2.body.velocity.x * damping,
+                squadMember2.body.velocity.y * damping
+            );
+        }
     }
     
     updateDebugText() {
