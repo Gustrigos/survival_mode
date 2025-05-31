@@ -51,32 +51,44 @@ export class SentryGun extends Phaser.Physics.Arcade.Sprite {
         this.setDepth(1000); // High depth so it renders above most things
         
         // Use SpriteScaler to make it bigger than player (48x72 pixels)
-        // Try SpriteScaler first, but fallback to manual sizing if needed
-        SpriteScaler.autoScale(this, 'sentry_gun_right', { maintainAspectRatio: true });
+        // Force exact size without maintaining aspect ratio to get 48x72 exactly
+        SpriteScaler.autoScale(this, 'sentry_gun_right', { maintainAspectRatio: false });
         
         // If SpriteScaler didn't work as expected, force the size
-        if (this.displayWidth > 80 || this.displayHeight > 80) {
-            console.log(`🎯 SpriteScaler result too large (${this.displayWidth}x${this.displayHeight}), using manual sizing`);
+        if (this.displayWidth !== 48 || this.displayHeight !== 72) {
             this.setDisplaySize(48, 72); // Force exact size
+            console.log(`🎯 Forced sentry gun size to 48x72 (was ${this.displayWidth}x${this.displayHeight})`);
         }
         
-        // Debug: Log the final scaled size
-        console.log(`🎯 Sentry gun final size: ${this.displayWidth}x${this.displayHeight} (target: 48x72)`);
+        // Force an update to ensure scaling is applied before collision box calculation
+        this.updateDisplayOrigin();
         
-        // Set up collision box size and positioning FIRST
-        const scaledBounds = this.getBounds();
+        // Set up collision box size using the ACTUAL scaled display size (not getBounds)
+        // getBounds() might not reflect the scaling immediately, so use displayWidth/Height directly
+        const actualDisplayWidth = this.displayWidth;
+        const actualDisplayHeight = this.displayHeight;
         
-        // Sentry gun collision body - very tight, just enough to prevent walking through
-        // Players should be able to barely squeeze past on sides/top/bottom
-        const bodyWidth = scaledBounds.width * 0.3;   // 30% of visual size - very tight
-        const bodyHeight = scaledBounds.height * 0.25; // 25% of visual size - just the base/core
+        // Sentry gun collision body - dynamic size like Player.js
+        // Use sprite display size-based sizing for easier targeting and interaction
+        const bodyWidth = Math.min(actualDisplayWidth * 1.5, 80);   // 150% of display size, capped at 80px
+        const bodyHeight = Math.min(actualDisplayHeight * 1.5, 80); // 150% of display size, capped at 80px
         
         // Set body size and center it automatically (true flag centers like Player.js)
         this.body.setSize(bodyWidth, bodyHeight, true);
         
-        console.log(`🎯 Sentry gun collision body: ${bodyWidth.toFixed(1)}x${bodyHeight.toFixed(1)} (very tight - barely blocks)`);
+        // EXPLICIT DEBUG: Log the collision box calculation step by step
+        console.log(`🎯 COLLISION BOX DEBUG:`);
+        console.log(`  actualDisplayWidth: ${actualDisplayWidth}`);
+        console.log(`  actualDisplayHeight: ${actualDisplayHeight}`);
+        console.log(`  calculated bodyWidth: ${bodyWidth}`);
+        console.log(`  calculated bodyHeight: ${bodyHeight}`);
+        console.log(`  final body.width: ${this.body.width}`);
+        console.log(`  final body.height: ${this.body.height}`);
+        console.log(`  body position: (${this.body.x}, ${this.body.y})`);
+        console.log(`  body center: (${this.body.center.x}, ${this.body.center.y})`);
         
-        // THEN configure as static and immovable
+        // THEN configure as static and immovable - CORRECT ORDER IS IMPORTANT
+        this.body.immovable = true; // Set immovable property directly (not a method)
         this.body.moves = false; // Prevent any movement
         this.body.pushable = false; // Cannot be pushed
         this.body.enable = true; // Ensure collision detection is enabled
@@ -84,17 +96,7 @@ export class SentryGun extends Phaser.Physics.Arcade.Sprite {
         // Force refresh the physics body to ensure changes take effect
         this.body.updateFromGameObject();
         
-        // Verify the body is properly static
-        if (!this.body.isStatic) {
-            console.warn('🎯 Warning: Sentry gun body is not static!');
-        }
-        
-        // Double-check and force static properties
-        if (this.body.world) {
-            this.body.world.staticBody = true;
-        }
-        
-        // Debug: Verify physics body configuration
+        // Debug: Verify physics body configuration with enhanced logging
         console.log(`🎯 Sentry gun physics body:`, {
             isStatic: this.body.isStatic,
             moves: this.body.moves,
@@ -103,8 +105,19 @@ export class SentryGun extends Phaser.Physics.Arcade.Sprite {
             enable: this.body.enable,
             size: { width: this.body.width, height: this.body.height },
             position: { x: this.body.x, y: this.body.y },
-            center: { x: this.body.center.x, y: this.body.center.y }
+            center: { x: this.body.center.x, y: this.body.center.y },
+            spriteBounds: { width: actualDisplayWidth.toFixed(1), height: actualDisplayHeight.toFixed(1) },
+            bodySize: { width: bodyWidth.toFixed(1), height: bodyHeight.toFixed(1) },
+            scalingFactor: '1.5x sprite display size (like player)',
+            spriteDisplaySize: { width: actualDisplayWidth.toFixed(1), height: actualDisplayHeight.toFixed(1) }
         });
+        
+        // Verify the body is properly static
+        if (!this.body.isStatic && !this.body.immovable) {
+            console.warn('🎯 Warning: Sentry gun body is not static or immovable!');
+        } else {
+            console.log('✅ Sentry gun body is properly configured as static/immovable');
+        }
         
         console.log(`Sentry gun placed at (${x}, ${y}) with ${this.health} health`);
         
@@ -252,20 +265,20 @@ export class SentryGun extends Phaser.Physics.Arcade.Sprite {
             // Check if the texture exists, fallback to right if not
             if (this.scene.textures.exists(newTexture)) {
                 this.setTexture(newTexture);
-                // Re-apply scaling to maintain consistent size
-                SpriteScaler.autoScale(this, newTexture, { maintainAspectRatio: true });
+                // Re-apply scaling to maintain consistent size - use exact sizing
+                SpriteScaler.autoScale(this, newTexture, { maintainAspectRatio: false });
                 
                 // Force correct size if SpriteScaler didn't work
-                if (this.displayWidth > 80 || this.displayHeight > 80) {
+                if (this.displayWidth !== 48 || this.displayHeight !== 72) {
                     this.setDisplaySize(48, 72);
                 }
             } else {
                 console.warn(`Texture ${newTexture} not found, using fallback`);
                 this.setTexture('sentry_gun_right');
-                SpriteScaler.autoScale(this, 'sentry_gun_right', { maintainAspectRatio: true });
+                SpriteScaler.autoScale(this, 'sentry_gun_right', { maintainAspectRatio: false });
                 
                 // Force correct size if SpriteScaler didn't work
-                if (this.displayWidth > 80 || this.displayHeight > 80) {
+                if (this.displayWidth !== 48 || this.displayHeight !== 72) {
                     this.setDisplaySize(48, 72);
                 }
             }

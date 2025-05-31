@@ -9,8 +9,8 @@ export class NPCPlayer extends Player {
         this.squadConfig = {
             name: squadConfig.name || 'Alpha',
             color: squadConfig.color || 0x00ff00, // Green for NPCs
-            followDistance: squadConfig.followDistance || 60, // Distance to maintain from formation position
-            maxSeparation: squadConfig.maxSeparation || 200, // Max distance from leader before abandoning combat
+            followDistance: squadConfig.followDistance || 100, // Increased from 60 - more space from formation position
+            maxSeparation: squadConfig.maxSeparation || 250, // Increased from 200 - longer leash before abandoning combat
             formationOffset: squadConfig.formationOffset || { x: 0, y: 0 }, // Formation position relative to leader
             aggroRange: squadConfig.aggroRange || 300, // Range to detect and shoot zombies
             ...squadConfig
@@ -350,8 +350,8 @@ export class NPCPlayer extends Player {
         const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, mainPlayer.x, mainPlayer.y);
         
         // Create a larger "dead zone" to prevent constant micro-adjustments
-        const deadZone = this.isRetreating ? 25 : 40; // Smaller when retreating, larger when in formation
-        const followThreshold = this.squadConfig.followDistance + 20; // Add buffer to follow distance
+        const deadZone = this.isRetreating ? 35 : 60; // Increased from 25:40 - larger dead zone for more space
+        const followThreshold = this.squadConfig.followDistance + 30; // Increased buffer from 20 to 30
         
         // Determine if we should follow based on distance and combat status
         // Both follow and move modes use the same logic
@@ -432,8 +432,8 @@ export class NPCPlayer extends Player {
         this.health = Math.max(0, this.health - amount);
         this.lastDamageTime = currentTime;
         
-        // Screen flash effect (same as parent)
-        this.scene.cameras.main.flash(200, 255, 100, 100);
+        // Removed screen flash effect - only main player should get screen flash
+        // NPCs use name tag visual feedback instead for damage indication
         
         // DO NOT update window.gameState.playerHealth or window.updateUI.health 
         // (that's only for the main player's HTML UI)
