@@ -26,6 +26,20 @@ export class NPCPlayer extends Player {
         this.isDead = false; // Track death state to prevent multiple death calls
         this.isRetreating = false; // Track if NPC is retreating due to reloading
         
+        // Stuck detection and pathfinding persistence
+        this.positionHistory = []; // Track recent positions to detect if stuck
+        this.stuckCheckInterval = 1000; // Check if stuck every 1 second
+        this.lastStuckCheckTime = 0;
+        this.isStuck = false;
+        this.unstuckAttempts = 0;
+        this.maxUnstuckAttempts = 3;
+        
+        // Persistent pathfinding
+        this.currentPathDirection = null; // Current chosen path direction
+        this.pathPersistenceTime = 2000; // Stick with chosen path for 2 seconds
+        this.lastPathChoiceTime = 0;
+        this.alternatePathIndex = 0; // Track which alternate path we're trying
+        
         // === SQUAD COMMAND PROPERTIES ===
         this.squadMode = 'follow'; // 'follow' or 'hold' - controlled by player
         this.pingTarget = null; // Specific zombie to focus fire on
@@ -99,8 +113,64 @@ export class NPCPlayer extends Player {
             this.nameTag.y = this.y - 40;
         }
         
+        // Stuck detection system
+        this.updateStuckDetection(time);
+        
         // AI behavior updates
         this.updateAI(time, delta);
+    }
+    
+    updateStuckDetection(time) {
+        // Only track stuck detection when in follow mode - don't interfere with squad commands
+        const isExecutingSquadCommand = (this.squadMode === 'hold' && this.holdPosition) || 
+                                       (this.squadMode === 'move' && (this.pingLocation || this.holdPosition)) ||
+                                       (this.pingTarget && this.pingTarget.active);
+        
+        // Reset stuck state when executing squad commands
+        if (isExecutingSquadCommand) {
+            this.isStuck = false;
+            this.unstuckAttempts = 0;
+            return; // Don't track position history during squad commands
+        }
+        
+        // Record current position in history
+        this.positionHistory.push({ x: this.x, y: this.y, time: time });
+        
+        // Keep only last 5 seconds of position history
+        const cutoffTime = time - 5000;
+        this.positionHistory = this.positionHistory.filter(pos => pos.time > cutoffTime);
+        
+        // Check if stuck every second
+        if (time - this.lastStuckCheckTime > this.stuckCheckInterval) {
+            this.lastStuckCheckTime = time;
+            
+            // Calculate if we've made meaningful progress in the last 2 seconds
+            const recentHistory = this.positionHistory.filter(pos => pos.time > time - 2000);
+            
+            if (recentHistory.length > 5) {
+                const oldestPos = recentHistory[0];
+                const newestPos = recentHistory[recentHistory.length - 1];
+                const distanceTraveled = Phaser.Math.Distance.Between(
+                    oldestPos.x, oldestPos.y, newestPos.x, newestPos.y
+                );
+                
+                // If moved less than 30 pixels in 2 seconds while trying to move, we're stuck
+                if (distanceTraveled < 30 && (this.body.velocity.x !== 0 || this.body.velocity.y !== 0)) {
+                    if (!this.isStuck) {
+                        this.isStuck = true;
+                        this.unstuckAttempts = 0;
+                        console.log(`${this.squadConfig.name} detected as stuck! Distance traveled: ${distanceTraveled.toFixed(1)}px`);
+                    }
+                } else {
+                    // Made good progress, no longer stuck
+                    if (this.isStuck) {
+                        console.log(`${this.squadConfig.name} unstuck! Distance traveled: ${distanceTraveled.toFixed(1)}px`);
+                    }
+                    this.isStuck = false;
+                    this.unstuckAttempts = 0;
+                }
+            }
+        }
     }
     
     updateAI(time, delta) {
@@ -108,7 +178,12 @@ export class NPCPlayer extends Player {
         const distanceToLeader = this.scene.player ? 
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
-        // PRIORITY 1: If reloading and NOT in hold mode, retreat to leader
+        // PRIORITY 1: Execute squad commands FIRST - This takes precedence over everything except emergency retreat
+        if (this.executeSquadCommands(distanceToLeader)) {
+            return; // Skip all other AI logic when executing specific squad commands
+        }
+        
+        // PRIORITY 2: If reloading and NOT in hold mode, retreat to leader
         if (this.isRetreating && this.isReloading && this.squadMode !== 'hold') {
             this.target = null;
             this.isFollowing = true;
@@ -117,15 +192,10 @@ export class NPCPlayer extends Player {
             return; // Skip all other AI logic during retreat
         }
         
-        // PRIORITY 2: Check if we're blocking the player's line of fire and move out of the way
+        // PRIORITY 3: Check if we're blocking the player's line of fire and move out of the way
         if (this.isBlockingPlayer()) {
             this.repositionToAvoidBlocking();
             return; // Skip other AI logic while repositioning
-        }
-        
-        // PRIORITY 3: Execute squad commands (NEW) - This now takes precedence over max separation
-        if (this.executeSquadCommands(distanceToLeader)) {
-            return; // Skip normal AI if executing specific squad commands
         }
         
         // PRIORITY 4: If too far from leader AND NOT in hold mode, abandon combat and return to formation
@@ -134,32 +204,35 @@ export class NPCPlayer extends Player {
             this.isFollowing = true;
         }
         
-        // NOTE: Removed emergency follow logic - hold mode is now absolute
+        // PRIORITY 5: Scan for zombie targets periodically (but only if not in strict command mode)
+        // Only scan for targets if in follow mode or if in hold/move mode and at position
+        const canEngageCombat = this.squadMode === 'follow' || 
+                               (this.squadMode === 'hold' && this.holdPosition && 
+                                Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y) <= 25) ||
+                               (this.squadMode === 'move' && this.holdPosition && 
+                                Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y) <= 25);
         
-        // Scan for zombie targets periodically (but only if not retreating or forced to follow)
-        // Works for both follow and move modes
         if (time - this.lastTargetScanTime > this.targetScanInterval && 
             distanceToLeader <= this.squadConfig.maxSeparation && 
-            !this.isRetreating) {
+            !this.isRetreating && canEngageCombat) {
             this.scanForTargets();
             this.lastTargetScanTime = time;
         }
         
-        // Shoot at target if we have one and not retreating or too far from leader
-        // Works for both follow and move modes
+        // PRIORITY 6: Shoot at target if we have one and are allowed to engage
         if (this.target && this.target.active && 
             distanceToLeader <= this.squadConfig.maxSeparation && 
-            !this.isRetreating) {
+            !this.isRetreating && canEngageCombat) {
             this.aimAndShoot();
         }
         
-        // Always update follow behavior (but prioritize it when retreating or far from leader)
+        // PRIORITY 7: Always update follow behavior (but prioritize it when retreating or far from leader)
         if (time - this.lastFollowUpdateTime > this.followUpdateInterval) {
             this.updateFollowBehavior();
             this.lastFollowUpdateTime = time;
         }
         
-        // Smart reload logic - reload proactively when safe near leader
+        // PRIORITY 8: Smart reload logic - reload proactively when safe near leader
         if (!this.isReloading && !this.isRetreating && distanceToLeader <= 50) {
             // If low on ammo and close to leader, reload preemptively for safety
             const ammoPercentage = this.ammo / this.maxAmmo;
@@ -207,7 +280,7 @@ export class NPCPlayer extends Player {
         // Check line of sight before shooting to prevent friendly fire
         if (!this.scene.checkLineOfSight(this, this.target)) {
             
-            // Try to find a better firing position
+            // Try to find a better shooting position
             this.repositionForClearShot();
             return; // Don't shoot if friendly units are in the way
         }
@@ -250,49 +323,329 @@ export class NPCPlayer extends Player {
     
     // Reposition to get a clear shot when line of sight is blocked
     repositionForClearShot() {
-        if (!this.target || !this.scene.player) return;
+        if (!this.target || !this.target.active) return;
         
-        // Calculate perpendicular positions around the target for flanking
-        const targetX = this.target.x;
-        const targetY = this.target.y;
-        const playerX = this.scene.player.x;
-        const playerY = this.scene.player.y;
+        // Try to find a better shooting position
+        const targetAngle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
+        const repositionDistance = 60; // Distance to move for repositioning
         
-        // Calculate angle from target to player
-        const targetToPlayerAngle = Phaser.Math.Angle.Between(targetX, targetY, playerX, playerY);
+        // Try multiple angles around the current position to find a clear shot
+        const angles = [
+            targetAngle + Math.PI / 4,      // 45 degrees clockwise
+            targetAngle - Math.PI / 4,      // 45 degrees counter-clockwise
+            targetAngle + Math.PI / 2,      // 90 degrees clockwise
+            targetAngle - Math.PI / 2,      // 90 degrees counter-clockwise
+            targetAngle + 3 * Math.PI / 4,  // 135 degrees clockwise
+            targetAngle - 3 * Math.PI / 4   // 135 degrees counter-clockwise
+        ];
         
-        // Try flanking positions 90 degrees left and right of the target-to-player line
-        const flankDistance = 80; // Distance to move for flanking
-        const leftFlankAngle = targetToPlayerAngle + Math.PI / 2; // 90 degrees left
-        const rightFlankAngle = targetToPlayerAngle - Math.PI / 2; // 90 degrees right
+        for (let angle of angles) {
+            const testX = this.x + Math.cos(angle) * repositionDistance;
+            const testY = this.y + Math.sin(angle) * repositionDistance;
+            
+            // Check if this position would give a clear shot
+            // Create a temporary position object for testing
+            const testPosition = { x: testX, y: testY, active: true };
+            
+            if (this.scene.checkLineOfSight(testPosition, this.target)) {
+                // Also check that we're not moving too far from formation
+                const distanceToLeader = Phaser.Math.Distance.Between(testX, testY, this.scene.player.x, this.scene.player.y);
+                
+                if (distanceToLeader <= this.squadConfig.maxSeparation) {
+                    // Move to this position using smart pathfinding
+                    const moveVector = this.calculateSmartMovement(testX, testY);
+                    const speed = 150; // Faster repositioning
+                    
+                    // Apply the calculated movement vector with speed adjustment
+                    const velocityX = moveVector.x * (speed / 120);
+                    const velocityY = moveVector.y * (speed / 120);
+                    
+                    this.setVelocity(velocityX, velocityY);
+                    
+                    const moveAngle = Math.atan2(velocityY, velocityX);
+                    this.updateDirectionFromMovement(moveAngle);
+                    this.setMoving(true);
+                    
+                    const degrees = Phaser.Math.RadToDeg(moveAngle);
+                    console.log(`${this.squadConfig.name} repositioning for clear shot at angle ${degrees.toFixed(0)}°`);
+                    return; // Found a good position, stop looking
+                }
+            }
+        }
         
-        // Choose the closer flanking position
-        const leftFlankX = targetX + Math.cos(leftFlankAngle) * flankDistance;
-        const leftFlankY = targetY + Math.sin(leftFlankAngle) * flankDistance;
-        const rightFlankX = targetX + Math.cos(rightFlankAngle) * flankDistance;
-        const rightFlankY = targetY + Math.sin(rightFlankAngle) * flankDistance;
+        // If no good repositioning angle found, just step back a bit to give space
+        const backwardAngle = targetAngle + Math.PI; // Opposite direction from target
+        const backupDistance = 30;
+        const backupX = this.x + Math.cos(backwardAngle) * backupDistance;
+        const backupY = this.y + Math.sin(backwardAngle) * backupDistance;
         
-        const leftDistance = Phaser.Math.Distance.Between(this.x, this.y, leftFlankX, leftFlankY);
-        const rightDistance = Phaser.Math.Distance.Between(this.x, this.y, rightFlankX, rightFlankY);
+        // Only back up if it doesn't take us too far from leader
+        const distanceToLeader = Phaser.Math.Distance.Between(backupX, backupY, this.scene.player.x, this.scene.player.y);
+        if (distanceToLeader <= this.squadConfig.maxSeparation) {
+            this.setVelocity(Math.cos(backwardAngle) * 80, Math.sin(backwardAngle) * 80);
+            console.log(`${this.squadConfig.name} backing up to avoid friendly fire`);
+        }
+    }
+    
+    updateFollowBehavior() {
+        if (!this.scene.player) return;
         
-        // Choose the closer flanking position
-        const targetFlankX = leftDistance < rightDistance ? leftFlankX : rightFlankX;
-        const targetFlankY = leftDistance < rightDistance ? leftFlankY : rightFlankY;
+        // === SQUAD COMMAND MODE HANDLING ===
+        let desiredX, desiredY;
         
-        // Move towards the flanking position
-        const angle = Phaser.Math.Angle.Between(this.x, this.y, targetFlankX, targetFlankY);
-        const speed = 150; // Tactical repositioning speed
+        if (this.squadMode === 'hold' && this.holdPosition) {
+            // Hold mode: stay at assigned hold position
+            desiredX = this.holdPosition.x;
+            desiredY = this.holdPosition.y;
+        } else if (this.squadMode === 'move' && this.pingLocation) {
+            // Move mode: go to pinged location (but don't hold there permanently)
+            desiredX = this.pingLocation.x;
+            desiredY = this.pingLocation.y;
+        } else {
+            // Follow mode or fallback: use formation position relative to leader
+            desiredX = this.scene.player.x + this.squadConfig.formationOffset.x;
+            desiredY = this.scene.player.y + this.squadConfig.formationOffset.y;
+        }
         
-        const velocityX = Math.cos(angle) * speed;
-        const velocityY = Math.sin(angle) * speed;
+        // Add dynamic spacing to prevent overlapping with other squad members
+        const spacing = this.calculateDynamicSpacing(desiredX, desiredY);
+        desiredX += spacing.x;
+        desiredY += spacing.y;
         
-        this.setVelocity(velocityX, velocityY);
+        // Calculate distances
+        const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
+        const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
         
-        // Update direction for animation
+        // Define behavior thresholds
+        const deadZone = 25; // Don't move if closer than this to desired position
+        const followThreshold = this.squadConfig.followDistance; // 60-100 pixels depending on config
+        // Increased buffer from 20 to 30
+        
+        // Determine if we should follow based on distance and combat status
+        // Both follow and move modes use the same logic
+        const shouldFollow = this.isRetreating || // Always follow when retreating
+                           ((this.squadMode === 'follow' || this.squadMode === 'move') && distanceToDesired > followThreshold) ||
+                           distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow/move mode only
+        
+        // Only move if outside the dead zone AND should follow
+        if (shouldFollow && distanceToDesired > deadZone) {
+            // Smart pathfinding: calculate movement with obstacle avoidance
+            const moveVector = this.calculateSmartMovement(desiredX, desiredY);
+            
+            // Adjust speed based on distance and retreat status
+            let speed = 120; // Base speed
+            
+            if (this.isRetreating) {
+                speed = 250; // Much faster when retreating for protection!
+            } else if (distanceToLeader > this.squadConfig.maxSeparation) {
+                speed = 220; // Much faster when too far from leader
+            } else if (distanceToDesired > followThreshold * 1.5) {
+                speed = 180; // Faster when moderately far
+            } else {
+                speed = 80; // Slower when close to avoid overshooting
+            }
+            
+            // Apply the calculated movement vector with speed adjustment
+            const velocityX = moveVector.x * (speed / 120); // Scale to desired speed
+            const velocityY = moveVector.y * (speed / 120);
+            
+            this.setVelocity(velocityX, velocityY);
+            
+            // Update direction for animation
+            const angle = Math.atan2(velocityY, velocityX);
+            this.updateDirectionFromMovement(angle);
+            this.setMoving(true);
+            
+            // Set following flag to false when we get close enough
+            if (distanceToDesired <= deadZone) {
+                this.isFollowing = false;
+            }
+        } else {
+            // Stop moving when in dead zone or when close enough
+            this.setVelocity(0, 0);
+            this.setMoving(false);
+            this.isFollowing = false; // Clear following flag to prevent constant re-triggering
+        }
+    }
+    
+    calculateDynamicSpacing(targetX, targetY) {
+        // Check for nearby squad members and adjust position to avoid overlapping
+        const minSpacing = 45; // Minimum distance between squad members
+        let totalPushX = 0;
+        let totalPushY = 0;
+        
+        if (this.scene.squadMembers) {
+            this.scene.squadMembers.children.entries.forEach(otherMember => {
+                if (otherMember !== this && otherMember.active) {
+                    const distance = Phaser.Math.Distance.Between(targetX, targetY, otherMember.x, otherMember.y);
+                    
+                    if (distance < minSpacing && distance > 0) {
+                        // Calculate push vector away from other member
+                        const angle = Phaser.Math.Angle.Between(otherMember.x, otherMember.y, targetX, targetY);
+                        const pushStrength = (minSpacing - distance) / minSpacing; // Stronger push when closer
+                        
+                        totalPushX += Math.cos(angle) * pushStrength * 30;
+                        totalPushY += Math.sin(angle) * pushStrength * 30;
+                    }
+                }
+            });
+        }
+        
+        return { x: totalPushX, y: totalPushY };
+    }
+    
+    calculateSmartMovement(targetX, targetY) {
+        const currentTime = this.scene.time.now;
+        
+        // Only use stuck detection in follow mode - don't interfere with squad commands
+        const isExecutingSquadCommand = (this.squadMode === 'hold' && this.holdPosition) || 
+                                       (this.squadMode === 'move' && (this.pingLocation || this.holdPosition)) ||
+                                       (this.pingTarget && this.pingTarget.active);
+        
+        // Special unstuck behavior if detected as stuck AND not executing squad commands
+        if (this.isStuck && this.unstuckAttempts < this.maxUnstuckAttempts && !isExecutingSquadCommand) {
+            return this.performUnstuckManeuver(targetX, targetY, currentTime);
+        }
+        
+        // If we have a current path direction and it's still valid, stick with it
+        // But only in follow mode - always recalculate for squad commands
+        if (this.currentPathDirection && 
+            (currentTime - this.lastPathChoiceTime) < this.pathPersistenceTime &&
+            !isExecutingSquadCommand) {
+            
+            // Check if current path is still clear
+            if (!this.checkForObstacles(this.currentPathDirection.x, this.currentPathDirection.y)) {
+                // Path is still clear, keep using it
+                return this.currentPathDirection;
+            } else {
+                // Path is now blocked, need to choose a new one
+                console.log(`${this.squadConfig.name} current path blocked, choosing new path`);
+                this.currentPathDirection = null;
+            }
+        }
+        
+        // Get direct path to target
+        const directPath = this.getDirectPathToTarget(targetX, targetY);
+        
+        // Check for obstacles in the direct path
+        const obstacleAhead = this.checkForObstacles(directPath.x, directPath.y);
+        
+        if (!obstacleAhead) {
+            // Direct path is clear, use it and remember it (only in follow mode)
+            if (!isExecutingSquadCommand) {
+                this.currentPathDirection = directPath;
+                this.lastPathChoiceTime = currentTime;
+            }
+            return directPath;
+        }
+        
+        // Direct path blocked, find alternate path using persistent method
+        const alternatePath = this.findPersistentAlternatePath(targetX, targetY, currentTime);
+        if (alternatePath) {
+            // Remember the path only in follow mode
+            if (!isExecutingSquadCommand) {
+                this.currentPathDirection = alternatePath;
+                this.lastPathChoiceTime = currentTime;
+            }
+            return alternatePath;
+        }
+        
+        // No clear alternate path, try obstacle avoidance
+        const avoidancePath = this.getObstacleAvoidanceVector(targetX, targetY);
+        if (!isExecutingSquadCommand) {
+            this.currentPathDirection = avoidancePath;
+            this.lastPathChoiceTime = currentTime;
+        }
+        return avoidancePath;
+    }
+    
+    getDirectPathToTarget(targetX, targetY) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 0) {
+            // Return normalized direction vector (base speed 120)
+            const normalizedX = (dx / distance) * 120;
+            const normalizedY = (dy / distance) * 120;
+            return { x: normalizedX, y: normalizedY };
+        }
+        
+        return { x: 0, y: 0 };
+    }
+    
+    checkForObstacles(velX, velY) {
+        // Check for sandbags in front of NPC
+        const lookAheadDistance = 100; // Increased from 70 to 100 - look further ahead
+        const futureX = this.x + (velX / 120) * lookAheadDistance; // Assume base speed of 120
+        const futureY = this.y + (velY / 120) * lookAheadDistance;
+        
+        // Check collision with sandbags and other solid structures
+        if (this.scene.structures) {
+            for (let structure of this.scene.structures.children.entries) {
+                if (structure.active && (structure.structureType === 'sandbags' || 
+                    structure.structureType === 'crashed_helicopter' ||
+                    structure.structureType === 'concrete_building' ||
+                    structure.structureType === 'damaged_building')) {
+                    
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, structure.x, structure.y);
+                    
+                    // Increased obstacle ranges for better detection
+                    let obstacleRange = 50; // Increased from 40 to 50
+                    if (structure.structureType === 'crashed_helicopter') obstacleRange = 100; // Increased from 80
+                    else if (structure.structureType === 'concrete_building') obstacleRange = 75; // Increased from 60
+                    else if (structure.structureType === 'damaged_building') obstacleRange = 65; // Increased from 50
+                    
+                    if (distance < obstacleRange) {
+                        return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    findPersistentAlternatePath(targetX, targetY, currentTime) {
+        // Try multiple directions to find a clear path to target
+        // Use a more systematic approach that tries each direction longer
+        const angles = [
+            Math.PI / 6,     // 30 degrees right
+            -Math.PI / 6,    // 30 degrees left
+            Math.PI / 4,     // 45 degrees right
+            -Math.PI / 4,    // 45 degrees left
+            Math.PI / 3,     // 60 degrees right
+            -Math.PI / 3,    // 60 degrees left
+            Math.PI / 2,     // 90 degrees right
+            -Math.PI / 2,    // 90 degrees left
+        ];
+        
+        const baseAngle = Math.atan2(targetY - this.y, targetX - this.x);
+        
+        // Start from where we left off to avoid constantly switching directions
+        for (let i = 0; i < angles.length; i++) {
+            const angleIndex = (this.alternatePathIndex + i) % angles.length;
+            const testAngle = baseAngle + angles[angleIndex];
+            const testVelX = Math.cos(testAngle) * 120;
+            const testVelY = Math.sin(testAngle) * 120;
+            
+            // Check if this direction is clear
+            if (!this.checkForObstacles(testVelX, testVelY)) {
+                // Update the index for next time
+                this.alternatePathIndex = angleIndex;
+                console.log(`${this.squadConfig.name} choosing alternate path: ${Phaser.Math.RadToDeg(testAngle).toFixed(0)}°`);
+                return { x: testVelX, y: testVelY };
+            }
+        }
+        
+        return null; // No clear path found
+    }
+    
+    updateDirectionFromMovement(angle) {
+        // Update direction for animation based on movement angle
         let direction = 'down';
         const degrees = Phaser.Math.RadToDeg(angle);
         
-        // Map angle ranges to 8 directions including diagonals
         if (degrees >= -22.5 && degrees < 22.5) {
             direction = 'right';
         } else if (degrees >= 22.5 && degrees < 67.5) {
@@ -312,113 +665,6 @@ export class NPCPlayer extends Player {
         }
         
         this.setDirection(direction);
-        this.setMoving(true);
-        
-    }
-    
-    updateFollowBehavior() {
-        if (!this.scene.player) return;
-        
-        // If in hold mode, don't follow at all - ABSOLUTE hold with no exceptions
-        if (this.squadMode === 'hold') {
-            // In hold mode - don't follow, just stay put regardless of retreat status
-            this.setVelocity(0, 0);
-            this.setMoving(false);
-            this.isFollowing = false;
-            return;
-        }
-        
-        // Move mode behaves the same as follow mode for basic movement
-        // The difference is in how they respond to commands (move mode is more responsive to left-click)
-        
-        // Calculate desired position based on formation offset
-        const mainPlayer = this.scene.player;
-        let desiredX, desiredY;
-        
-        if (this.isRetreating) {
-            // When retreating, get much closer to leader for protection (50% closer)
-            desiredX = mainPlayer.x + (this.squadConfig.formationOffset.x * 0.5);
-            desiredY = mainPlayer.y + (this.squadConfig.formationOffset.y * 0.5);
-        } else {
-            // Normal formation position
-            desiredX = mainPlayer.x + this.squadConfig.formationOffset.x;
-            desiredY = mainPlayer.y + this.squadConfig.formationOffset.y;
-        }
-        
-        // Calculate distance to desired position
-        const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
-        const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, mainPlayer.x, mainPlayer.y);
-        
-        // Create a larger "dead zone" to prevent constant micro-adjustments
-        const deadZone = this.isRetreating ? 35 : 60; // Increased from 25:40 - larger dead zone for more space
-        const followThreshold = this.squadConfig.followDistance + 30; // Increased buffer from 20 to 30
-        
-        // Determine if we should follow based on distance and combat status
-        // Both follow and move modes use the same logic
-        const shouldFollow = this.isRetreating || // Always follow when retreating
-                           ((this.squadMode === 'follow' || this.squadMode === 'move') && distanceToDesired > followThreshold) ||
-                           distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow/move mode only
-        
-        // Only move if outside the dead zone AND should follow
-        if (shouldFollow && distanceToDesired > deadZone) {
-            // Calculate movement direction
-            const angle = Phaser.Math.Angle.Between(this.x, this.y, desiredX, desiredY);
-            
-            // Adjust speed based on distance and retreat status
-            let speed = 120; // Base speed
-            
-            if (this.isRetreating) {
-                speed = 250; // Much faster when retreating for protection!
-            } else if (distanceToLeader > this.squadConfig.maxSeparation) {
-                speed = 220; // Much faster when too far from leader
-            } else if (distanceToDesired > followThreshold * 1.5) {
-                speed = 180; // Faster when moderately far
-            } else {
-                speed = 80; // Slower when close to avoid overshooting
-            }
-            
-            // Move towards desired position
-            const velocityX = Math.cos(angle) * speed;
-            const velocityY = Math.sin(angle) * speed;
-            
-            this.setVelocity(velocityX, velocityY);
-            
-            // Update direction for animation
-            let direction = 'down';
-            const degrees = Phaser.Math.RadToDeg(angle);
-            
-            // Map angle ranges to 8 directions including diagonals
-            if (degrees >= -22.5 && degrees < 22.5) {
-                direction = 'right';
-            } else if (degrees >= 22.5 && degrees < 67.5) {
-                direction = 'down-right';
-            } else if (degrees >= 67.5 && degrees < 112.5) {
-                direction = 'down';
-            } else if (degrees >= 112.5 && degrees < 157.5) {
-                direction = 'down-left';
-            } else if (degrees >= 157.5 || degrees < -157.5) {
-                direction = 'left';
-            } else if (degrees >= -157.5 && degrees < -112.5) {
-                direction = 'up-left';
-            } else if (degrees >= -112.5 && degrees < -67.5) {
-                direction = 'up';
-            } else if (degrees >= -67.5 && degrees < -22.5) {
-                direction = 'up-right';
-            }
-            
-            this.setDirection(direction);
-            this.setMoving(true);
-            
-            // Set following flag to false when we get close enough
-            if (distanceToDesired <= deadZone) {
-                this.isFollowing = false;
-            }
-        } else {
-            // Stop moving when in dead zone or when close enough
-            this.setVelocity(0, 0);
-            this.setMoving(false);
-            this.isFollowing = false; // Clear following flag to prevent constant re-triggering
-        }
     }
     
     // Override takeDamage to prevent NPCs from updating main player's HTML UI
@@ -796,77 +1042,73 @@ export class NPCPlayer extends Player {
     
     // Reposition to avoid blocking the player
     repositionToAvoidBlocking() {
-        if (!this.scene.player) return;
+        if (!this.scene.player || !this.scene.player.active) return;
         
-        const player = this.scene.player;
+        // Calculate direction away from player
+        const angle = Phaser.Math.Angle.Between(this.scene.player.x, this.scene.player.y, this.x, this.y);
+        const repositionDistance = 50; // Distance to move away
         
-        // Calculate perpendicular directions to player's facing direction
-        let moveX = 0, moveY = 0;
+        // Move perpendicular to avoid blocking player's movement path
+        const perpAngle1 = angle + Math.PI / 2; // 90 degrees left
+        const perpAngle2 = angle - Math.PI / 2; // 90 degrees right
         
-        switch (player.direction) {
-            case 'up':
-            case 'down':
-                // Move left or right
-                moveX = this.x < player.x ? -60 : 60; // Move away from player's horizontal position
-                break;
-            case 'left':
-            case 'right':
-                // Move up or down
-                moveY = this.y < player.y ? -60 : 60; // Move away from player's vertical position
-                break;
-            case 'up-left':
-            case 'down-right':
-                // Move in perpendicular diagonal
-                moveX = 60;
-                moveY = -60;
-                break;
-            case 'up-right':
-            case 'down-left':
-                // Move in perpendicular diagonal
-                moveX = -60;
-                moveY = -60;
-                break;
+        // Test both perpendicular directions and choose the one that keeps us closer to formation
+        const testX1 = this.x + Math.cos(perpAngle1) * repositionDistance;
+        const testY1 = this.y + Math.sin(perpAngle1) * repositionDistance;
+        const testX2 = this.x + Math.cos(perpAngle2) * repositionDistance;
+        const testY2 = this.y + Math.sin(perpAngle2) * repositionDistance;
+        
+        // Calculate formation position
+        const formationX = this.scene.player.x + this.squadConfig.formationOffset.x;
+        const formationY = this.scene.player.y + this.squadConfig.formationOffset.y;
+        
+        // Choose the safer position (one that keeps us within maxSeparation from leader)
+        const distanceToLeader1 = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, testX1, testY1);
+        const distanceToLeader2 = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, testX2, testY2);
+        
+        let targetX, targetY;
+        if (distanceToLeader1 <= this.squadConfig.maxSeparation && distanceToLeader2 <= this.squadConfig.maxSeparation) {
+            // Both positions are valid, choose the one closer to our formation position
+            const formationX = this.scene.player.x + this.squadConfig.formationOffset.x;
+            const formationY = this.scene.player.y + this.squadConfig.formationOffset.y;
+            
+            const distanceToFormation1 = Phaser.Math.Distance.Between(formationX, formationY, testX1, testY1);
+            const distanceToFormation2 = Phaser.Math.Distance.Between(formationX, formationY, testX2, testY2);
+            
+            if (distanceToFormation1 < distanceToFormation2) {
+                targetX = testX1;
+                targetY = testY1;
+            } else {
+                targetX = testX2;
+                targetY = testY2;
+            }
+        } else if (distanceToLeader1 <= this.squadConfig.maxSeparation) {
+            targetX = testX1;
+            targetY = testY1;
+        } else if (distanceToLeader2 <= this.squadConfig.maxSeparation) {
+            targetX = testX2;
+            targetY = testY2;
+        } else {
+            // Neither position is safe, use formation offset
+            targetX = this.scene.player.x + this.squadConfig.formationOffset.x;
+            targetY = this.scene.player.y + this.squadConfig.formationOffset.y;
         }
         
-        // Calculate new target position
-        const targetX = player.x + moveX;
-        const targetY = player.y + moveY;
+        // Move to target position using smart pathfinding
+        const moveVector = this.calculateSmartMovement(targetX, targetY);
+        const speed = 100; // Moderate speed for avoidance
         
-        // Move towards the repositioning target
-        const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
-        const speed = 180; // Fast repositioning speed
-        
-        const velocityX = Math.cos(angle) * speed;
-        const velocityY = Math.sin(angle) * speed;
+        // Apply the calculated movement vector with speed adjustment
+        const velocityX = moveVector.x * (speed / 120);
+        const velocityY = moveVector.y * (speed / 120);
         
         this.setVelocity(velocityX, velocityY);
         
-        // Update direction for animation
-        let direction = 'down';
-        const degrees = Phaser.Math.RadToDeg(angle);
-        
-        // Map angle ranges to 8 directions including diagonals
-        if (degrees >= -22.5 && degrees < 22.5) {
-            direction = 'right';
-        } else if (degrees >= 22.5 && degrees < 67.5) {
-            direction = 'down-right';
-        } else if (degrees >= 67.5 && degrees < 112.5) {
-            direction = 'down';
-        } else if (degrees >= 112.5 && degrees < 157.5) {
-            direction = 'down-left';
-        } else if (degrees >= 157.5 || degrees < -157.5) {
-            direction = 'left';
-        } else if (degrees >= -157.5 && degrees < -112.5) {
-            direction = 'up-left';
-        } else if (degrees >= -112.5 && degrees < -67.5) {
-            direction = 'up';
-        } else if (degrees >= -67.5 && degrees < -22.5) {
-            direction = 'up-right';
-        }
-        
-        this.setDirection(direction);
+        const moveAngle = Math.atan2(velocityY, velocityX);
+        this.updateDirectionFromMovement(moveAngle);
         this.setMoving(true);
         
+        console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
     }
     
     // === SQUAD COMMAND SYSTEM ===
@@ -929,10 +1171,20 @@ export class NPCPlayer extends Player {
             const distanceToPing = Phaser.Math.Distance.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
             
             if (distanceToPing > 30) { // Move towards ping location
-                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
+                // Clear target to focus on movement
+                this.target = null;
+                
+                // Use smart pathfinding for ping movement
+                const moveVector = this.calculateSmartMovement(this.pingLocation.x, this.pingLocation.y);
                 const speed = 180; // Fast movement for ping commands
                 
-                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                // Apply the calculated movement vector with speed adjustment
+                const velocityX = moveVector.x * (speed / 120); // Scale to desired speed
+                const velocityY = moveVector.y * (speed / 120);
+                
+                this.setVelocity(velocityX, velocityY);
+                
+                const angle = Math.atan2(velocityY, velocityX);
                 this.updateDirectionFromMovement(angle);
                 this.setMoving(true);
                 
@@ -967,10 +1219,20 @@ export class NPCPlayer extends Player {
             const distanceToHold = Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
             
             if (distanceToHold > 25) { // Return to hold position if moved too far
-                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+                // Clear target to focus on returning to position
+                this.target = null;
+                
+                // Use smart pathfinding to return to hold position
+                const moveVector = this.calculateSmartMovement(this.holdPosition.x, this.holdPosition.y);
                 const speed = 120; // Moderate speed to return to position
                 
-                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                // Apply the calculated movement vector with speed adjustment
+                const velocityX = moveVector.x * (speed / 120);
+                const velocityY = moveVector.y * (speed / 120);
+                
+                this.setVelocity(velocityX, velocityY);
+                
+                const angle = Math.atan2(velocityY, velocityX);
                 this.updateDirectionFromMovement(angle);
                 this.setMoving(true);
                 
@@ -990,12 +1252,6 @@ export class NPCPlayer extends Player {
                 this.setVelocity(0, 0);
                 this.setMoving(false);
                 
-                // Scan for targets while holding position
-                this.scanForTargets();
-                if (this.target && this.target.active) {
-                    this.aimAndShoot();
-                }
-                
                 // Show we're holding position
                 if (this.nameTag && this.nameTag.active && !this.isDead) {
                     try {
@@ -1006,7 +1262,7 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal follow AI
+                return true; // Skip normal follow AI - stay in position
             }
         }
         
@@ -1015,10 +1271,20 @@ export class NPCPlayer extends Player {
             const distanceToHold = Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
             
             if (distanceToHold > 25) { // Return to move destination if moved too far
-                const angle = Phaser.Math.Angle.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y);
+                // Clear target to focus on returning to position
+                this.target = null;
+                
+                // Use smart pathfinding to return to move destination
+                const moveVector = this.calculateSmartMovement(this.holdPosition.x, this.holdPosition.y);
                 const speed = 120; // Moderate speed to return to position
                 
-                this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+                // Apply the calculated movement vector with speed adjustment
+                const velocityX = moveVector.x * (speed / 120);
+                const velocityY = moveVector.y * (speed / 120);
+                
+                this.setVelocity(velocityX, velocityY);
+                
+                const angle = Math.atan2(velocityY, velocityX);
                 this.updateDirectionFromMovement(angle);
                 this.setMoving(true);
                 
@@ -1038,12 +1304,6 @@ export class NPCPlayer extends Player {
                 this.setVelocity(0, 0);
                 this.setMoving(false);
                 
-                // Scan for targets while holding at move position
-                this.scanForTargets();
-                if (this.target && this.target.active) {
-                    this.aimAndShoot();
-                }
-                
                 // Show we're holding at move destination
                 if (this.nameTag && this.nameTag.active && !this.isDead) {
                     try {
@@ -1054,7 +1314,7 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal follow AI
+                return true; // Skip normal follow AI - stay at move destination
             }
         }
         
@@ -1087,29 +1347,187 @@ export class NPCPlayer extends Player {
         }
     }
     
-    updateDirectionFromMovement(angle) {
-        // Update direction for animation based on movement angle
-        let direction = 'down';
-        const degrees = Phaser.Math.RadToDeg(angle);
+    performUnstuckManeuver(targetX, targetY, currentTime) {
+        this.unstuckAttempts++;
+        console.log(`${this.squadConfig.name} performing unstuck maneuver #${this.unstuckAttempts}`);
         
-        if (degrees >= -22.5 && degrees < 22.5) {
-            direction = 'right';
-        } else if (degrees >= 22.5 && degrees < 67.5) {
-            direction = 'down-right';
-        } else if (degrees >= 67.5 && degrees < 112.5) {
-            direction = 'down';
-        } else if (degrees >= 112.5 && degrees < 157.5) {
-            direction = 'down-left';
-        } else if (degrees >= 157.5 || degrees < -157.5) {
-            direction = 'left';
-        } else if (degrees >= -157.5 && degrees < -112.5) {
-            direction = 'up-left';
-        } else if (degrees >= -112.5 && degrees < -67.5) {
-            direction = 'up';
-        } else if (degrees >= -67.5 && degrees < -22.5) {
-            direction = 'up-right';
+        // Try different unstuck strategies based on attempt number
+        switch (this.unstuckAttempts) {
+            case 1:
+                // First attempt: Move directly away from nearest obstacle
+                return this.moveAwayFromNearestObstacle();
+                
+            case 2:
+                // Second attempt: Find the furthest entrance and go there
+                return this.moveToFurthestEntrance(targetX, targetY);
+                
+            case 3:
+                // Third attempt: Random direction to break out of stuck state
+                return this.moveInRandomDirection();
+                
+            default:
+                // Fallback: force movement toward target regardless of obstacles
+                this.isStuck = false; // Reset stuck state
+                return this.getDirectPathToTarget(targetX, targetY);
+        }
+    }
+    
+    moveAwayFromNearestObstacle() {
+        let nearestObstacle = null;
+        let nearestDistance = Infinity;
+        
+        // Find nearest obstacle
+        if (this.scene.structures) {
+            this.scene.structures.children.entries.forEach(structure => {
+                if (structure.active && (structure.structureType === 'sandbags' || 
+                    structure.structureType === 'crashed_helicopter' ||
+                    structure.structureType === 'concrete_building' ||
+                    structure.structureType === 'damaged_building')) {
+                    
+                    const distance = Phaser.Math.Distance.Between(this.x, this.y, structure.x, structure.y);
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestObstacle = structure;
+                    }
+                }
+            });
         }
         
-        this.setDirection(direction);
+        if (nearestObstacle) {
+            // Move directly away from nearest obstacle
+            const awayAngle = Phaser.Math.Angle.Between(nearestObstacle.x, nearestObstacle.y, this.x, this.y);
+            return {
+                x: Math.cos(awayAngle) * 120,
+                y: Math.sin(awayAngle) * 120
+            };
+        }
+        
+        // No obstacle found, move in random direction
+        return this.moveInRandomDirection();
+    }
+    
+    moveToFurthestEntrance(targetX, targetY) {
+        const entrances = this.findNearestEntrances(targetX, targetY);
+        
+        if (entrances.length > 0) {
+            // Choose the furthest entrance (might be less crowded)
+            const furthestEntrance = entrances[entrances.length - 1];
+            const dx = furthestEntrance.x - this.x;
+            const dy = furthestEntrance.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                console.log(`${this.squadConfig.name} heading to furthest entrance at (${furthestEntrance.x}, ${furthestEntrance.y})`);
+                return {
+                    x: (dx / distance) * 120,
+                    y: (dy / distance) * 120
+                };
+            }
+        }
+        
+        return this.moveInRandomDirection();
+    }
+    
+    moveInRandomDirection() {
+        const randomAngle = Math.random() * Math.PI * 2;
+        console.log(`${this.squadConfig.name} moving in random direction: ${Phaser.Math.RadToDeg(randomAngle).toFixed(0)}°`);
+        return {
+            x: Math.cos(randomAngle) * 120,
+            y: Math.sin(randomAngle) * 120
+        };
+    }
+    
+    getObstacleAvoidanceVector(targetX, targetY) {
+        // Find the closest sandbag entrance by checking gaps in the perimeter
+        const entrances = this.findNearestEntrances(targetX, targetY);
+        
+        if (entrances.length > 0) {
+            // Move towards the closest entrance
+            const closestEntrance = entrances[0];
+            const dx = closestEntrance.x - this.x;
+            const dy = closestEntrance.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                return {
+                    x: (dx / distance) * 120,
+                    y: (dy / distance) * 120
+                };
+            }
+        }
+        
+        // Fallback: move perpendicular to obstacle
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        
+        // Try moving perpendicular to the direct path
+        const perpX = -dy;
+        const perpY = dx;
+        const perpLength = Math.sqrt(perpX * perpX + perpY * perpY);
+        
+        if (perpLength > 0) {
+            const normalizedPerpX = (perpX / perpLength) * 120 * 0.8;
+            const normalizedPerpY = (perpY / perpLength) * 120 * 0.8;
+            
+            // Randomly choose left or right
+            const direction = Math.random() > 0.5 ? 1 : -1;
+            return { 
+                x: normalizedPerpX * direction, 
+                y: normalizedPerpY * direction 
+            };
+        }
+        
+        // Final fallback: move towards target anyway
+        return this.getDirectPathToTarget(targetX, targetY);
+    }
+    
+    findNearestEntrances(targetX, targetY) {
+        // Define known entrance positions based on sandbag layout
+        // These correspond to the gaps left in createCrashSiteSandbags()
+        const helicopterX = 1000;
+        const helicopterY = 750;
+        
+        const knownEntrances = [
+            // Main northern entrance (between x-72 to x+72) - wider approach
+            { x: helicopterX - 20, y: helicopterY - 220 }, // Left approach
+            { x: helicopterX, y: helicopterY - 220 },      // Center approach
+            { x: helicopterX + 20, y: helicopterY - 220 }, // Right approach
+            
+            // Southern entrances with wider approaches
+            { x: helicopterX - 88, y: helicopterY + 220 }, // Left southern entrance
+            { x: helicopterX - 60, y: helicopterY + 220 }, // Left approach
+            { x: helicopterX + 50, y: helicopterY + 220 },  // Right approach  
+            { x: helicopterX + 80, y: helicopterY + 220 },  // Right southern entrance
+            
+            // Western entrance with approach angles
+            { x: helicopterX - 290, y: helicopterY - 30 }, // North approach
+            { x: helicopterX - 290, y: helicopterY },      // Direct approach
+            { x: helicopterX - 290, y: helicopterY + 30 }, // South approach
+            
+            // Eastern entrance with approach angles
+            { x: helicopterX + 290, y: helicopterY - 30 }, // North approach
+            { x: helicopterX + 290, y: helicopterY },      // Direct approach
+            { x: helicopterX + 290, y: helicopterY + 30 }, // South approach
+            
+            // Additional corner waypoints for better navigation
+            { x: helicopterX - 250, y: helicopterY - 180 }, // Northwest corner
+            { x: helicopterX + 250, y: helicopterY - 180 }, // Northeast corner
+            { x: helicopterX - 250, y: helicopterY + 180 }, // Southwest corner
+            { x: helicopterX + 250, y: helicopterY + 180 }, // Southeast corner
+        ];
+        
+        // Sort entrances by distance from current position
+        const entranceDistances = knownEntrances.map(entrance => {
+            const distanceFromNPC = Phaser.Math.Distance.Between(this.x, this.y, entrance.x, entrance.y);
+            const distanceToTarget = Phaser.Math.Distance.Between(entrance.x, entrance.y, targetX, targetY);
+            
+            return {
+                ...entrance,
+                totalDistance: distanceFromNPC + distanceToTarget * 0.3 // Reduced weight for target distance
+            };
+        });
+        
+        // Return sorted by total distance (closest first)
+        return entranceDistances.sort((a, b) => a.totalDistance - b.totalDistance);
     }
 } 

@@ -91,7 +91,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Check if knockback period has ended
         if (this.isKnockedBack && time > this.knockbackEndTime) {
             this.isKnockedBack = false;
-            console.log('✅ Zombie knockback ended, resuming AI movement');
         }
         
         // Gradual velocity reduction during knockback for more natural physics
@@ -148,25 +147,119 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         if (!closestTarget) return;
         
-        // Calculate direction to closest target
-        const dx = closestTarget.x - this.x;
-        const dy = closestTarget.y - this.y;
+        // Smart pathfinding: check for obstacles in direct path
+        const directPath = this.getDirectPathToTarget(closestTarget);
+        const obstacleAhead = this.checkForObstacles(directPath.x, directPath.y);
+        
+        let finalVelocity = directPath;
+        
+        if (obstacleAhead) {
+            // Find alternate path around obstacles
+            const alternatePath = this.findAlternatePath(closestTarget);
+            if (alternatePath) {
+                finalVelocity = alternatePath;
+            } else {
+                // If no alternate path, try to move around the obstacle
+                finalVelocity = this.getObstacleAvoidanceVector(closestTarget);
+            }
+        }
+        
+        // Apply velocity with some randomness for natural movement
+        const randomX = (Math.random() - 0.5) * 20;
+        const randomY = (Math.random() - 0.5) * 20;
+        
+        this.setVelocity(finalVelocity.x + randomX, finalVelocity.y + randomY);
+        
+        // Update direction based on movement
+        this.updateDirection(finalVelocity.x, finalVelocity.y);
+    }
+    
+    getDirectPathToTarget(target) {
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance > 0) {
-            // Normalize and apply speed
             const normalizedX = (dx / distance) * this.speed;
             const normalizedY = (dy / distance) * this.speed;
-            
-            // Add some randomness to movement for more natural behavior
-            const randomX = (Math.random() - 0.5) * 20;
-            const randomY = (Math.random() - 0.5) * 20;
-            
-            this.setVelocity(normalizedX + randomX, normalizedY + randomY);
-            
-            // Update direction based on movement
-            this.updateDirection(normalizedX, normalizedY);
+            return { x: normalizedX, y: normalizedY };
         }
+        
+        return { x: 0, y: 0 };
+    }
+    
+    checkForObstacles(velX, velY) {
+        // Check for sandbags in front of zombie
+        const lookAheadDistance = 80; // Distance to look ahead
+        const futureX = this.x + (velX / this.speed) * lookAheadDistance;
+        const futureY = this.y + (velY / this.speed) * lookAheadDistance;
+        
+        // Check collision with sandbags
+        if (this.scene.structures) {
+            for (let structure of this.scene.structures.children.entries) {
+                if (structure.structureType === 'sandbags' && structure.active) {
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, structure.x, structure.y);
+                    if (distance < 50) { // Within obstacle range
+                        return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    findAlternatePath(target) {
+        // Try multiple directions to find a clear path
+        const angles = [
+            Math.PI / 4,    // 45 degrees right
+            -Math.PI / 4,   // 45 degrees left
+            Math.PI / 2,    // 90 degrees right
+            -Math.PI / 2,   // 90 degrees left
+            3 * Math.PI / 4, // 135 degrees right
+            -3 * Math.PI / 4 // 135 degrees left
+        ];
+        
+        const baseAngle = Math.atan2(target.y - this.y, target.x - this.x);
+        
+        for (let angleOffset of angles) {
+            const testAngle = baseAngle + angleOffset;
+            const testVelX = Math.cos(testAngle) * this.speed;
+            const testVelY = Math.sin(testAngle) * this.speed;
+            
+            // Check if this direction is clear
+            if (!this.checkForObstacles(testVelX, testVelY)) {
+                return { x: testVelX, y: testVelY };
+            }
+        }
+        
+        return null; // No clear path found
+    }
+    
+    getObstacleAvoidanceVector(target) {
+        // Simple obstacle avoidance: move perpendicular to obstacle
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        
+        // Try moving perpendicular to the direct path
+        const perpX = -dy;
+        const perpY = dx;
+        const perpLength = Math.sqrt(perpX * perpX + perpY * perpY);
+        
+        if (perpLength > 0) {
+            const normalizedPerpX = (perpX / perpLength) * this.speed * 0.7;
+            const normalizedPerpY = (perpY / perpLength) * this.speed * 0.7;
+            
+            // Randomly choose left or right
+            const direction = Math.random() > 0.5 ? 1 : -1;
+            return { 
+                x: normalizedPerpX * direction, 
+                y: normalizedPerpY * direction 
+            };
+        }
+        
+        // Fallback: move towards target anyway
+        return this.getDirectPathToTarget(target);
     }
     
     addRandomMovement() {

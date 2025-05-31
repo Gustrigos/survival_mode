@@ -1639,19 +1639,40 @@ export class GameScene extends Phaser.Scene {
             sandbagPos: { x: structure.x.toFixed(2), y: structure.y.toFixed(2) }
         });
         
-        // Create a subtle shield effect to show friendly fire prevention
-        const shieldEffect = this.add.circle(structure.x, structure.y, 15, 0xC2B280, 0.3); // Sandy color
-        shieldEffect.setDepth(structure.depth + 1);
+        // Create small smoke effects when bullet hits sandbag (like dust impact)
+        const smokeCount = 3; // Multiple small puffs
         
-        this.tweens.add({
-            targets: shieldEffect,
-            scaleX: 1.3,
-            scaleY: 1.3,
-            alpha: 0,
-            duration: 200,
-            ease: 'Power2',
-            onComplete: () => shieldEffect.destroy()
-        });
+        for (let i = 0; i < smokeCount; i++) {
+            // Random offset around the impact point
+            const offsetX = (Math.random() - 0.5) * 20;
+            const offsetY = (Math.random() - 0.5) * 15;
+            
+            let puff;
+            
+            if (this.textures.exists('smoke_puff')) {
+                puff = this.add.image(structure.x + offsetX, structure.y + offsetY, 'smoke_puff');
+                puff.setScale(0.025); // Very small smoke puffs
+            } else {
+                // Simple fallback - tiny gray circle
+                puff = this.add.circle(structure.x + offsetX, structure.y + offsetY, 1.5, 0x8B7355); // Dusty brown color
+            }
+            
+            puff.setDepth(structure.depth + 50);
+            puff.setAlpha(0.05);
+            
+            // Small upward drift with random spread
+            this.tweens.add({
+                targets: puff,
+                y: puff.y - Phaser.Math.Between(8, 15), // Small upward movement
+                x: puff.x + Phaser.Math.Between(-8, 8), // Random horizontal drift
+                scaleX: (puff.scaleX || 1) * 1.5, // Small expansion
+                scaleY: (puff.scaleY || 1) * 1.5, // Small expansion
+                alpha: 0,
+                duration: Phaser.Math.Between(800, 1200), // Varying duration
+                ease: 'Linear',
+                onComplete: () => puff.destroy()
+            });
+        }
         
         // DO NOT deactivate bullet - let it pass through sandbag
         // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
@@ -1684,6 +1705,40 @@ export class GameScene extends Phaser.Scene {
             this.squadMembers.children.entries.forEach(squadMember => {
                 if (squadMember && squadMember.active && squadMember !== shooter) {
                     friendlyUnits.push(squadMember);
+                }
+            });
+        }
+        
+        // Check for solid structures that block bullets (excluding sandbags which bullets pass through)
+        if (this.structures) {
+            this.structures.children.entries.forEach(structure => {
+                if (structure && structure.active && structure.structureType !== 'sandbags') {
+                    // Only check large structures that actually block bullets
+                    if (structure.structureType === 'crashed_helicopter' || 
+                        structure.structureType === 'concrete_building' ||
+                        structure.structureType === 'damaged_building') {
+                        
+                        const distanceToLine = this.pointToLineDistance(
+                            structure.x, structure.y,
+                            shooterX, shooterY,
+                            targetX, targetY
+                        );
+                        
+                        // Large structures block shots if close to line of fire
+                        if (distanceToLine < 60) { // Large blocking radius for buildings
+                            const structureDistanceFromShooter = Phaser.Math.Distance.Between(
+                                shooterX, shooterY, structure.x, structure.y
+                            );
+                            const targetDistanceFromShooter = Phaser.Math.Distance.Between(
+                                shooterX, shooterY, targetX, targetY
+                            );
+                            
+                            // Only block if structure is between shooter and target
+                            if (structureDistanceFromShooter < targetDistanceFromShooter) {
+                                return false; // Line of sight blocked by structure
+                            }
+                        }
+                    }
                 }
             });
         }
