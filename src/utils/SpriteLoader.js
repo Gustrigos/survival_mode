@@ -55,6 +55,87 @@ export class SpriteLoader {
             scene.load.image(`weapon_${direction}`, `src/assets/sprites/weapons/weapon_${direction}.png`);
         });
         scene.load.image('machine_gun', 'src/assets/sprites/weapons/machine_gun.png');
+        
+        // Load sentry gun sprites
+        scene.load.image('sentry_gun_right', 'src/assets/sprites/crafts/sentry_gun_right.png');
+        scene.load.image('sentry_gun_up', 'src/assets/sprites/crafts/sentry_gun_up.png');
+        scene.load.image('sentry_gun_down', 'src/assets/sprites/crafts/sentry_gun_down.png');
+        scene.load.image('sentry_gun_up_right', 'src/assets/sprites/crafts/sentry_gun_up_right.png');
+        scene.load.image('sentry_gun_down_right', 'src/assets/sprites/crafts/sentry_gun_down_right.png');
+        
+        // Create left-facing sprites by flipping right-facing ones after loading
+        scene.load.once('complete', () => {
+            SpriteLoader.createSentryGunLeftSprites(scene);
+        });
+    }
+    
+    static createSentryGunLeftSprites(scene) {
+        // Create left-facing sentry gun sprites by flipping the right-facing ones
+        const rightSprites = [
+            { right: 'sentry_gun_right', left: 'sentry_gun_left' },
+            { right: 'sentry_gun_up_right', left: 'sentry_gun_up_left' },
+            { right: 'sentry_gun_down_right', left: 'sentry_gun_down_left' }
+        ];
+        
+        rightSprites.forEach(spriteInfo => {
+            // Skip if left sprite already exists
+            if (scene.textures.exists(spriteInfo.left)) {
+                console.log(`⚠️ Left sprite ${spriteInfo.left} already exists, skipping creation`);
+                return;
+            }
+            
+            if (scene.textures.exists(spriteInfo.right)) {
+                try {
+                    // Get the original texture
+                    const originalTexture = scene.textures.get(spriteInfo.right);
+                    const originalFrame = originalTexture.get();
+                    
+                    // Create a canvas to flip the sprite
+                    const canvas = scene.textures.createCanvas(
+                        spriteInfo.left, 
+                        originalFrame.width, 
+                        originalFrame.height
+                    );
+                    
+                    // Check if canvas was created successfully
+                    if (!canvas) {
+                        console.warn(`⚠️ Failed to create canvas for ${spriteInfo.left}`);
+                        return;
+                    }
+                    
+                    // Get the canvas context and flip horizontally
+                    const ctx = canvas.getContext();
+                    if (!ctx) {
+                        console.warn(`⚠️ Failed to get canvas context for ${spriteInfo.left}`);
+                        return;
+                    }
+                    
+                    ctx.save();
+                    ctx.scale(-1, 1); // Flip horizontally
+                    ctx.drawImage(
+                        originalTexture.getSourceImage(),
+                        originalFrame.x,
+                        originalFrame.y,
+                        originalFrame.width,
+                        originalFrame.height,
+                        -originalFrame.width, // Negative width due to flip
+                        0,
+                        originalFrame.width,
+                        originalFrame.height
+                    );
+                    ctx.restore();
+                    
+                    // Refresh the canvas texture
+                    canvas.refresh();
+                    
+                    console.log(`✅ Created left-facing sprite: ${spriteInfo.left} from ${spriteInfo.right}`);
+                } catch (error) {
+                    console.warn(`⚠️ Error creating ${spriteInfo.left}:`, error);
+                }
+            } else {
+                console.warn(`⚠️ Could not create ${spriteInfo.left} - source sprite ${spriteInfo.right} not found`);
+            }
+        });
     }
     
     static loadEffectSprites(scene) {
@@ -65,7 +146,9 @@ export class SpriteLoader {
         
         // Helicopter crash site effects
         scene.load.image('smoke_puff', 'src/assets/sprites/effects/smoke_puff.png');
-        scene.load.image('small_fire', 'src/assets/sprites/effects/small_fire.png');
+        
+        // Small fire is optional - only load if it exists
+        // scene.load.image('small_fire', 'src/assets/sprites/effects/small_fire.png');
     }
     
     static loadEnvironmentSprites(scene) {
@@ -85,14 +168,21 @@ export class SpriteLoader {
     }
     
     static loadTerrainSprites(scene) {
+        console.log('🗺️ Loading terrain sprites...');
+        
         scene.load.image('grass_texture', 'src/assets/sprites/terrain/grass_texture.png');
         scene.load.image('dirt_texture', 'src/assets/sprites/terrain/dirt_texture.png');
         scene.load.image('stone_texture', 'src/assets/sprites/terrain/stone_texture.png');
         scene.load.image('water_texture', 'src/assets/sprites/terrain/water_texture.png');
         scene.load.image('sand_texture', 'src/assets/sprites/terrain/sand_texture.png');
+        
+        console.log('🛣️ Loading dirt_road.png...');
         scene.load.image('dirt_road', 'src/assets/sprites/terrain/dirt_road.png');
+        
         scene.load.image('rubble', 'src/assets/sprites/terrain/rubble.png');
         scene.load.image('crackled_concrete', 'src/assets/sprites/terrain/crackled_concrete.png');
+        
+        console.log('🗺️ Terrain sprites queued for loading');
     }
     
     static loadBuildingSprites(scene) {

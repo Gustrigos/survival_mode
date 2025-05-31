@@ -41,7 +41,6 @@ export class NPCPlayer extends Player {
             this.switchWeapon(squadConfig.weapon);
         }
         
-        console.log(`NPC Squad Member '${this.squadConfig.name}' created at ${x}, ${y}`);
     }
     
     createNameTag() {
@@ -78,7 +77,6 @@ export class NPCPlayer extends Player {
                     this.nameTag.clearTint();
                 }
                 
-                console.log(`${this.squadConfig.name} finished reloading and ready for combat!`);
                 
                 // DO NOT update window.gameState or window.updateUI 
                 // (that's only for the main player's HTML UI)
@@ -134,7 +132,6 @@ export class NPCPlayer extends Player {
         if (distanceToLeader > this.squadConfig.maxSeparation && this.squadMode !== 'hold') {
             this.target = null;
             this.isFollowing = true;
-            console.log(`${this.squadConfig.name} too far from leader (${distanceToLeader.toFixed(0)}), returning to formation`);
         }
         
         // NOTE: Removed emergency follow logic - hold mode is now absolute
@@ -167,7 +164,6 @@ export class NPCPlayer extends Player {
             // If low on ammo and close to leader, reload preemptively for safety
             const ammoPercentage = this.ammo / this.maxAmmo;
             if (ammoPercentage <= 0.2 && !this.target) {
-                console.log(`${this.squadConfig.name} proactively reloading while safe near leader`);
                 this.reload();
             }
         }
@@ -210,7 +206,6 @@ export class NPCPlayer extends Player {
         
         // Check line of sight before shooting to prevent friendly fire
         if (!this.scene.checkLineOfSight(this, this.target)) {
-            console.log(`${this.squadConfig.name} holding fire - friendly in line of sight`);
             
             // Try to find a better firing position
             this.repositionForClearShot();
@@ -319,7 +314,6 @@ export class NPCPlayer extends Player {
         this.setDirection(direction);
         this.setMoving(true);
         
-        console.log(`${this.squadConfig.name} flanking for clear shot`);
     }
     
     updateFollowBehavior() {
@@ -375,7 +369,6 @@ export class NPCPlayer extends Player {
             
             if (this.isRetreating) {
                 speed = 250; // Much faster when retreating for protection!
-                console.log(`${this.squadConfig.name} retreating at high speed to leader!`);
             } else if (distanceToLeader > this.squadConfig.maxSeparation) {
                 speed = 220; // Much faster when too far from leader
             } else if (distanceToDesired > followThreshold * 1.5) {
@@ -497,9 +490,6 @@ export class NPCPlayer extends Player {
         
         // Create death effects
         this.createDeathEffect();
-        
-        // Log elimination
-        console.log(`Squad member '${this.squadConfig.name}' has been eliminated!`);
         
         // Remove from squad members group and destroy
         if (this.scene.squadMembers) {
@@ -674,7 +664,6 @@ export class NPCPlayer extends Player {
             this.isRetreating = true;
             this.target = null; // Abandon current target
             this.isFollowing = true; // Force follow mode
-            console.log(`${this.squadConfig.name} is reloading and retreating to leader for protection!`);
             
             // Visual indication of retreating (subtle name tag color change)
             if (this.nameTag) {
@@ -682,7 +671,6 @@ export class NPCPlayer extends Player {
             }
         } else {
             // In hold mode - stay put while reloading, no retreat
-            console.log(`${this.squadConfig.name} is reloading in place (hold mode)`);
             this.target = null; // Still abandon current target while reloading
             
             // Visual indication of reloading in place
@@ -711,7 +699,6 @@ export class NPCPlayer extends Player {
         
         // Call parent destroy
         super.destroy();
-        console.log(`Squad member '${this.squadConfig.name}' has been eliminated`);
     }
     
     // Set formation position for squad coordination
@@ -800,7 +787,6 @@ export class NPCPlayer extends Player {
             
             // If NPC is within 35 pixels of the player's facing line, they're blocking
             if (perpendicularDistance < 35) {
-                console.log(`${this.squadConfig.name} is blocking player's line of fire`);
                 return true;
             }
         }
@@ -881,7 +867,6 @@ export class NPCPlayer extends Player {
         this.setDirection(direction);
         this.setMoving(true);
         
-        console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
     }
     
     // === SQUAD COMMAND SYSTEM ===
@@ -892,25 +877,19 @@ export class NPCPlayer extends Player {
             return;
         }
         
-        // Called when squad leader gives new commands
-        console.log(`${this.squadConfig.name} received squad command - Mode: ${this.squadMode}, PingTarget: ${!!this.pingTarget}, PingLocation: ${!!this.pingLocation}`);
-        
         // Handle mode transitions
         if (this.squadMode === 'hold' && !this.holdPosition) {
             // Switching TO hold mode: set hold position at current location
             this.holdPosition = { x: this.x, y: this.y };
-            console.log(`${this.squadConfig.name} setting hold position at (${this.x.toFixed(0)}, ${this.y.toFixed(0)})`);
         } else if (this.squadMode === 'follow') {
             // Switching TO follow mode: clear any hold positions (from both hold mode and move commands)
             this.holdPosition = null;
-            console.log(`${this.squadConfig.name} cleared hold position, resuming follow mode`);
         } else if (this.squadMode === 'move') {
             // Switching TO move mode: clear any existing hold positions from previous hold commands
             // (but keep hold positions created by move commands)
             if (this.holdPosition && !this.isExecutingPing) {
                 // Only clear if we're not currently executing a move command
                 this.holdPosition = null;
-                console.log(`${this.squadConfig.name} cleared previous hold position, ready for move commands`);
             }
         }
         
@@ -975,7 +954,6 @@ export class NPCPlayer extends Player {
                     this.holdPosition = { x: this.pingLocation.x, y: this.pingLocation.y };
                     this.pingLocation = null;
                     this.isExecutingPing = false;
-                    console.log(`${this.squadConfig.name} reached move destination, now holding at (${this.holdPosition.x.toFixed(0)}, ${this.holdPosition.y.toFixed(0)})`);
                 } else {
                     // In follow mode: just clear the ping and resume following
                     this.pingLocation = null;

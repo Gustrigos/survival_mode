@@ -97,13 +97,6 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     }
     
     deactivate() {
-        console.log('💥 BULLET DEACTIVATED:', {
-            finalPos: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
-            wasActive: this.active,
-            wasVisible: this.visible,
-            bodyEnabled: this.body ? this.body.enable : 'no body',
-            timeAlive: this.scene ? (this.scene.time.now - this.startTime).toFixed(0) + 'ms' : 'unknown'
-        });
         
         // Restore alpha and clean any lingering trail sprite (if previously created)
         this.setAlpha(1);

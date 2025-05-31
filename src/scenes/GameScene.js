@@ -3,6 +3,7 @@ import { NPCPlayer } from '../entities/NPCPlayer.js';
 import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
+import { SentryGun } from '../entities/SentryGun.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
@@ -23,6 +24,12 @@ export class GameScene extends Phaser.Scene {
         } catch (error) {
             console.error('Error loading sprites:', error);
         }
+        
+        // Add loading completion event
+        this.load.on('complete', () => {
+            console.log('🗺️ All assets loaded, textures should be available now');
+            this.texturesFullyLoaded = true;
+        });
     }
 
     create() {
@@ -50,6 +57,27 @@ export class GameScene extends Phaser.Scene {
                 console.error(`✗ Texture '${texture}' missing!`);
             }
         });
+        
+        // Check terrain textures specifically
+        const terrainTextures = ['dirt_road', 'sand_texture', 'grass_texture', 'crackled_concrete', 'rubble'];
+        console.log('🗺️ TERRAIN TEXTURE CHECK:');
+        terrainTextures.forEach(texture => {
+            if (this.textures.exists(texture)) {
+                console.log(`✓ Terrain texture '${texture}' exists`);
+            } else {
+                console.error(`✗ Terrain texture '${texture}' missing!`);
+            }
+        });
+        
+        // IMPORTANT: Wait for all textures to be loaded before creating terrain
+        let texturesReady = terrainTextures.every(texture => this.textures.exists(texture));
+        console.log(`🗺️ All terrain textures ready: ${texturesReady}`);
+        
+        if (!texturesReady) {
+            console.warn('⚠️ Some terrain textures not loaded yet, will retry terrain creation...');
+            // Set a flag to retry terrain creation once textures are loaded
+            this.needsTerrainRetry = true;
+        }
         
         // Optimize terrain textures for better performance and visual quality
         try {
@@ -106,6 +134,9 @@ export class GameScene extends Phaser.Scene {
             classType: Structure,
             runChildUpdate: false
         });
+        
+        // Initialize sentry guns list (not using physics group to avoid conflicts)
+        this.sentryGunsList = [];
         
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
@@ -441,6 +472,11 @@ export class GameScene extends Phaser.Scene {
                 if (this.textures.exists(terrainType)) {
                     tile = this.add.image(x + tileSize/2, y + tileSize/2, terrainType);
                     
+                    // Debug specific terrain types
+                    if (terrainType === 'dirt_road') {
+                        console.log(`🗺️ Creating dirt_road tile at (${x}, ${y}) using texture:`, terrainType);
+                    }
+                    
                     // Ensure all terrain tiles are exactly the right size
                     // This handles both 32x32 and 1024x1024 source textures properly
                     tile.setDisplaySize(tileSize, tileSize);
@@ -460,6 +496,13 @@ export class GameScene extends Phaser.Scene {
                     }
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
+                    
+                    // Debug specific failures
+                    if (terrainType === 'dirt_road') {
+                        console.error(`🚨 DIRT_ROAD TEXTURE MISSING! Using fallback rectangle at (${x}, ${y})`);
+                        console.log('Available textures:', Object.keys(this.textures.list));
+                    }
+                    
                     // Create fallback colored rectangles
                     let color = 0xF4E4BC; // Default sand color
                     if (terrainType === 'rubble') color = 0x8B7355; // Brown rubble
@@ -817,6 +860,26 @@ export class GameScene extends Phaser.Scene {
         // Update depth sorting for proper layering
         this.updateDepthSorting();
         
+        // Update sentry guns
+        if (this.sentryGunsList) {
+            // Update active sentry guns and remove destroyed ones
+            this.sentryGunsList = this.sentryGunsList.filter(sentryGun => {
+                if (sentryGun && sentryGun.active) {
+                    sentryGun.update(time, delta);
+                    
+                    // Manual collision checking for damage (overlap-based)
+                    this.checkSentryGunDamageCollisions(sentryGun);
+                    
+                    return true; // Keep in list
+                } else {
+                    return false; // Remove from list
+                }
+            });
+        }
+        
+        // Update inventory hotbar
+        this.updateInventoryHotbar();
+        
         // Clean up effects
         this.cleanupEffects();
         
@@ -904,12 +967,38 @@ export class GameScene extends Phaser.Scene {
         
         // Enhanced shooting debug
         if (this.wasd.SPACE.isDown) {
-            this.player.shoot();
+            this.handleSpaceKey();
         }
         
-        // Reloading
+        // Number keys for equipment slot switching
+        // Try individual key checks to ensure they work
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('ONE'))) {
+            console.log('Key 1 pressed');
+            this.player.switchToSlot(1);
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('TWO'))) {
+            console.log('Key 2 pressed');
+            this.player.switchToSlot(2);
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('THREE'))) {
+            console.log('Key 3 pressed');
+            this.player.switchToSlot(3);
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('FOUR'))) {
+            console.log('Key 4 pressed');
+            this.player.switchToSlot(4);
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('FIVE'))) {
+            console.log('Key 5 pressed');
+            this.player.switchToSlot(5);
+        }
+        
+        // Reloading (only works for weapons)
         if (Phaser.Input.Keyboard.JustDown(this.wasd.R)) {
-            this.player.reload();
+            const equipment = this.player.getCurrentSlotEquipment();
+            if (equipment && equipment.type === 'weapon') {
+                this.player.reload();
+            }
         }
         
         // Structure interaction (for future features like entering buildings)
@@ -917,6 +1006,8 @@ export class GameScene extends Phaser.Scene {
             // Future: Add interaction with crash site structures
             // Could include searching wreckage, entering buildings, etc.
         }
+        
+        // Remove F key sentry gun placement - now handled by SPACE with slot 2
         
         // === SQUAD COMMANDS ===
         // Q key - Hold to show command wheel
@@ -939,6 +1030,177 @@ export class GameScene extends Phaser.Scene {
         
         // Track Q key state
         this.qKeyWasDown = qKey.isDown;
+    }
+    
+    handleSpaceKey() {
+        const equipment = this.player.getCurrentSlotEquipment();
+        if (!equipment) return;
+        
+        if (equipment.type === 'weapon') {
+            this.player.shoot();
+        } else if (equipment.type === 'placeable') {
+            // Handle placement (e.g., sentry gun)
+            if (equipment.id === 'sentryGun') {
+                this.placeSentryGun();
+            }
+        }
+    }
+    
+    placeSentryGun() {
+        // Check if player has sentry gun in current slot
+        const equipment = this.player.getCurrentSlotEquipment();
+        if (!equipment || equipment.type !== 'placeable' || equipment.id !== 'sentryGun' || equipment.count <= 0) {
+            console.log('No sentry gun available in current slot');
+            return;
+        }
+        
+        // Calculate placement position in front of player based on direction
+        let offsetX = 0;
+        let offsetY = 0;
+        const placeDistance = 80; // Distance in front of player
+        
+        switch (this.player.direction) {
+            case 'up':
+                offsetY = -placeDistance;
+                break;
+            case 'down':
+                offsetY = placeDistance;
+                break;
+            case 'left':
+                offsetX = -placeDistance;
+                break;
+            case 'right':
+                offsetX = placeDistance;
+                break;
+            case 'up-left':
+                offsetX = -placeDistance * 0.707;
+                offsetY = -placeDistance * 0.707;
+                break;
+            case 'up-right':
+                offsetX = placeDistance * 0.707;
+                offsetY = -placeDistance * 0.707;
+                break;
+            case 'down-left':
+                offsetX = -placeDistance * 0.707;
+                offsetY = placeDistance * 0.707;
+                break;
+            case 'down-right':
+                offsetX = placeDistance * 0.707;
+                offsetY = placeDistance * 0.707;
+                break;
+            default:
+                // Default to placing in front (down)
+                offsetY = placeDistance;
+                break;
+        }
+        
+        const placeX = this.player.x + offsetX;
+        const placeY = this.player.y + offsetY;
+        
+        // Check if placement location is valid (not overlapping with structures)
+        let validPlacement = true;
+        
+        // Check collision with structures
+        this.structures.children.entries.forEach(structure => {
+            const distance = Phaser.Math.Distance.Between(placeX, placeY, structure.x, structure.y);
+            if (distance < 60) { // Minimum distance from structures
+                validPlacement = false;
+            }
+        });
+        
+        // Check collision with other sentry guns
+        if (this.sentryGunsList) {
+            this.sentryGunsList.forEach(sentryGun => {
+                if (sentryGun && sentryGun.active) {
+                    const distance = Phaser.Math.Distance.Between(placeX, placeY, sentryGun.x, sentryGun.y);
+                    if (distance < 80) { // Minimum distance between sentry guns
+                        validPlacement = false;
+                    }
+                }
+            });
+        }
+        
+        // Check if within world bounds
+        if (placeX < 50 || placeX > 1998 || placeY < 50 || placeY > 1486) {
+            validPlacement = false;
+        }
+        
+        if (!validPlacement) {
+            console.log('Cannot place sentry gun here - too close to other objects');
+            // Show visual feedback for invalid placement
+            const invalidMarker = this.add.circle(placeX, placeY, 30, 0xFF0000, 0.5);
+            invalidMarker.setDepth(1500);
+            this.tweens.add({
+                targets: invalidMarker,
+                alpha: 0,
+                duration: 1000,
+                onComplete: () => invalidMarker.destroy()
+            });
+            return;
+        }
+        
+        // Create sentry gun
+        const sentryGun = new SentryGun(this, placeX, placeY);
+        // Don't add to group manually - just store reference for updates
+        if (!this.sentryGunsList) {
+            this.sentryGunsList = [];
+        }
+        this.sentryGunsList.push(sentryGun);
+        
+        // Set up solid collisions for this sentry gun (blocks movement)
+        this.physics.add.collider(this.player, sentryGun, (player, sentry) => {
+            console.log('🎯 Player collided with sentry gun!', {
+                playerPos: { x: player.x, y: player.y },
+                sentryPos: { x: sentry.x, y: sentry.y },
+                playerVel: { x: player.body.velocity.x, y: player.body.velocity.y }
+            });
+        });
+        this.physics.add.collider(this.squadMembers, sentryGun, (unit, sentry) => {
+            console.log('🎯 Squad member collided with sentry gun!');
+        });
+        this.physics.add.collider(this.zombies, sentryGun, (zombie, sentry) => {
+            console.log('🎯 Zombie collided with sentry gun!');
+        });
+        
+        // Add friendly fire protection for this sentry gun (same as squad members)
+        this.physics.add.overlap(this.bullets, sentryGun, this.bulletHitSentryGunFriendly, null, this);
+        
+        console.log('🛡️ Friendly fire protection enabled for sentry gun');
+        
+        // Debug: Verify collider setup
+        console.log(`🎯 Sentry gun colliders set up:`, {
+            playerCollider: !!this.physics.world.colliders._active.find(c => 
+                (c.object1 === this.player && c.object2 === sentryGun) || 
+                (c.object2 === this.player && c.object1 === sentryGun)
+            ),
+            sentryGunBody: {
+                isStatic: sentryGun.body.isStatic,
+                moves: sentryGun.body.moves,
+                enable: sentryGun.body.enable,
+                immovable: sentryGun.body.immovable
+            },
+            playerBody: {
+                enable: this.player.body.enable,
+                velocity: { x: this.player.body.velocity.x, y: this.player.body.velocity.y }
+            }
+        });
+        
+        // Use item from equipment
+        this.player.usePlaceableItem();
+        
+        // Visual feedback for successful placement
+        const successMarker = this.add.circle(placeX, placeY, 35, 0x00FF00, 0.5);
+        successMarker.setDepth(1500);
+        this.tweens.add({
+            targets: successMarker,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0,
+            duration: 1000,
+            onComplete: () => successMarker.destroy()
+        });
+        
+        console.log(`Sentry gun placed at (${placeX.toFixed(0)}, ${placeY.toFixed(0)})`);
     }
     
     handleZombieSpawning(time, delta) {
@@ -1167,7 +1429,6 @@ export class GameScene extends Phaser.Scene {
                 
                 // Only block if friendly is between shooter and target
                 if (friendlyDistanceFromShooter < targetDistanceFromShooter) {
-                    console.log(`🚫 Line of sight blocked by ${friendly.squadConfig?.name || 'LEADER'}`);
                     return false; // Line of sight blocked
                 }
             }
@@ -1354,7 +1615,6 @@ export class GameScene extends Phaser.Scene {
         this.zombiesSpawned = 0;
         this.isWaveActive = true;
         
-        console.log(`Starting Wave ${window.gameState.wave} with ${this.zombiesInWave} zombies`);
         
         window.updateUI.wave(window.gameState.wave);
         window.updateUI.zombiesLeft(this.zombiesInWave);
@@ -1471,6 +1731,18 @@ export class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
         this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
         
+        // Sentry gun collisions - handle manually since we're not using physics groups
+        // We'll check collisions in the update method instead
+        
+        // Remove old sentry gun group collision setup
+        // this.physics.add.overlap(this.zombies, this.sentryGuns, this.zombieHitSentryGun, null, this);
+        // this.physics.add.overlap(this.bullets, this.sentryGuns, this.bulletHitSentryGun, null, this);
+        // this.physics.add.collider(this.player, this.sentryGuns);
+        // this.physics.add.collider(this.squadMembers, this.sentryGuns);
+        
+        // Set up solid collisions for sentry guns when they're placed
+        // This will be called from placeSentryGun method
+        
         // Solid collisions with structures (keep these - important for gameplay)
         this.physics.add.collider(this.player, this.structures);
         this.physics.add.collider(this.squadMembers, this.structures);
@@ -1489,8 +1761,6 @@ export class GameScene extends Phaser.Scene {
         // Use custom collision handlers to reduce bouncing while preventing overlap
         this.physics.add.collider(this.player, this.squadMembers, this.handleFriendlyCollision, null, this);
         this.physics.add.collider(this.squadMembers, this.squadMembers, this.handleSquadCollision, null, this);
-        
-        console.log('Collisions set up with improved friendly collision handling');
     }
     
     // Custom collision handler for player vs squad members
@@ -1573,11 +1843,20 @@ export class GameScene extends Phaser.Scene {
         if (this.debugText) {
             const zombieCount = this.zombies ? this.zombies.children.size : 0;
             const squadCount = this.squadMembers ? this.squadMembers.children.size : 0;
+            const sentryCount = this.sentryGunsList ? this.sentryGunsList.length : 0;
+            const currentEquipment = this.player ? this.player.getCurrentSlotEquipment() : null;
+            const equipmentInfo = currentEquipment ? `${currentEquipment.name}${currentEquipment.count !== undefined ? ` (${currentEquipment.count})` : ''}` : 'None';
+            
             this.debugText.setText([
                 `Zombies: ${zombieCount}`,
                 `Squad Members: ${squadCount}`,
+                `Sentry Guns: ${sentryCount}`,
+                `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
-                `Score: ${window.gameState.score || 0}`
+                `Score: ${window.gameState.score || 0}`,
+                '',
+                'Press 1: Machine Gun, 2: Sentry Gun',
+                'Press SPACE to shoot/place'
             ].join('\n'));
         }
     }
@@ -1589,13 +1868,13 @@ export class GameScene extends Phaser.Scene {
         const startX = (1024 - totalWidth) / 2; // Center horizontally
         const startY = 768 - 80; // 80px from bottom
         
-        // No background - transparent and minimalistic
-        
         // Create inventory slots
         this.inventorySlots = [];
         this.inventoryItems = [];
+        this.inventoryTexts = [];
         
         for (let i = 0; i < slotCount; i++) {
+            const slotNumber = i + 1;
             const x = startX + i * (slotSize + 4);
             const y = startY;
             
@@ -1603,70 +1882,87 @@ export class GameScene extends Phaser.Scene {
             const slot = this.add.rectangle(x + slotSize/2, y + slotSize/2, slotSize, slotSize, 0x000000, 0)
                 .setDepth(2001)
                 .setScrollFactor(0)
-                .setStrokeStyle(2, 0x404040, 0.8); // Thicker darker grey border
-            
-            // Selected slot highlight (only for first slot initially)
-            if (i === 0) {
-                slot.setStrokeStyle(3, 0xFF69B4, 0.9); // Pink border for selection instead of white
-            }
+                .setStrokeStyle(2, 0x404040, 0.8); // Default border
             
             this.inventorySlots.push(slot);
             
-            // Add weapon to first slot
-            if (i === 0) {
-                const iconTexture = this.player && this.player.weapons[this.player.currentWeapon].icon ? this.player.weapons[this.player.currentWeapon].icon : 'pistol_down';
-                const weaponIcon = this.add.image(x + slotSize/2, y + slotSize/2, iconTexture)
+            // Check if this slot has equipment
+            const equipment = this.player ? this.player.equipment[slotNumber] : null;
+            
+            if (equipment) {
+                // Add equipment icon
+                const icon = this.add.image(x + slotSize/2, y + slotSize/2, equipment.icon)
                     .setDepth(2002)
                     .setScrollFactor(0);
-                weaponIcon.setDisplaySize(slotSize*0.8, slotSize*0.8); // keep a margin
+                icon.setDisplaySize(slotSize*0.8, slotSize*0.8);
+                this.inventoryItems.push(icon);
                 
-                this.inventoryItems.push(weaponIcon);
+                // Add count text for placeable items
+                if (equipment.type === 'placeable' && equipment.count !== undefined) {
+                    const countText = this.add.text(x + slotSize - 5, y + 5, equipment.count.toString(), {
+                        fontSize: '10px',
+                        fill: '#ffffff',
+                        fontFamily: 'Courier New',
+                        stroke: '#000000',
+                        strokeThickness: 1
+                    }).setOrigin(1, 0).setDepth(2004).setScrollFactor(0);
+                    this.inventoryTexts.push(countText);
+                } else {
+                    this.inventoryTexts.push(null);
+                }
                 
-                // Add weapon name text below hotbar - more subtle
-                const weaponName = this.player ? this.player.getCurrentWeaponName() : 'Weapon';
-                this.weaponNameText = this.add.text(x + slotSize/2, y + slotSize + 10, weaponName.charAt(0).toUpperCase()+weaponName.slice(1), {
-                    fontSize: '12px',
-                    fill: '#ffffff',
+                // Add slot number
+                const slotText = this.add.text(x + 5, y + 5, slotNumber.toString(), {
+                    fontSize: '8px',
+                    fill: '#cccccc',
                     fontFamily: 'Courier New',
-                    alpha: 0.8 // Semi-transparent text
-                }).setOrigin(0.5, 0).setDepth(2003).setScrollFactor(0);
+                    stroke: '#000000',
+                    strokeThickness: 1
+                }).setOrigin(0, 0).setDepth(2003).setScrollFactor(0);
             } else {
                 this.inventoryItems.push(null);
+                this.inventoryTexts.push(null);
+                
+                // Add slot number for empty slots too
+                const slotText = this.add.text(x + 5, y + 5, slotNumber.toString(), {
+                    fontSize: '8px',
+                    fill: '#666666',
+                    fontFamily: 'Courier New',
+                    stroke: '#000000',
+                    strokeThickness: 1
+                }).setOrigin(0, 0).setDepth(2003).setScrollFactor(0);
             }
         }
         
-        // Store current selected slot
-        this.selectedSlot = 0;
-        
-        console.log('Minimalistic inventory hotbar created');
     }
     
     updateInventoryHotbar() {
         // Update selected slot highlighting
         this.inventorySlots.forEach((slot, index) => {
-            if (index === this.selectedSlot) {
+            const slotNumber = index + 1;
+            const isSelected = this.player && this.player.currentSlot === slotNumber;
+            
+            if (isSelected) {
                 slot.setStrokeStyle(3, 0xFF69B4, 0.9); // Selected: thicker pink border
             } else {
-                slot.setStrokeStyle(2, 0x404040, 0.8); // Unselected: thicker darker grey border
+                slot.setStrokeStyle(2, 0x404040, 0.8); // Unselected: default border
             }
         });
         
-        // Update weapon name text
-        if (this.weaponNameText && this.player) {
-            const weaponName = this.player.getCurrentWeaponName();
-            this.weaponNameText.setText(weaponName.charAt(0).toUpperCase() + weaponName.slice(1));
-            // Update icon texture for slot 0 if changed
-            const currentIcon = this.player.weapons[this.player.currentWeapon].icon;
-            const iconSprite = this.inventoryItems[0];
-            if(iconSprite && iconSprite.texture.key !== currentIcon){
-                iconSprite.setTexture(currentIcon);
-                iconSprite.setDisplaySize(slotSize*0.8, slotSize*0.8);
+        // Update count texts for placeable items
+        this.inventoryTexts.forEach((countText, index) => {
+            if (countText && countText.active) {
+                const slotNumber = index + 1;
+                const equipment = this.player ? this.player.equipment[slotNumber] : null;
+                
+                if (equipment && equipment.type === 'placeable' && equipment.count !== undefined) {
+                    countText.setText(equipment.count.toString());
+                }
             }
-        }
+        });
     }
 
     addHelicopterEffects(x, y) {
-        console.log('🚁 Adding basic helicopter smoke effects');
         
         // Much simpler approach - just 2 basic smoke sources
         const smokeOffsets = [
@@ -1732,7 +2028,7 @@ export class GameScene extends Phaser.Scene {
             
             console.log('✅ Using small_fire.png with SpriteScaler:', flame.displayWidth, 'x', flame.displayHeight);
         } else {
-            // Simple fallback fire
+            // Simple fallback fire since small_fire.png is missing
             const flame = this.add.circle(x - 10, y + 20, 8, 0xFF4500);
             flame.setDepth(y + 50);
             flame.setAlpha(0.8);
@@ -1748,11 +2044,9 @@ export class GameScene extends Phaser.Scene {
             console.log('⚠️ small_fire.png not found, using 8px fallback');
         }
         
-        console.log('🔥 Basic helicopter effects initialized');
     }
 
     createFallbackPlayer() {
-        console.log('Creating fallback player...');
         this.player = this.add.rectangle(900, 650, 48, 64, 0x00ff00);
         this.player.setDepth(1000);
         
@@ -1780,7 +2074,6 @@ export class GameScene extends Phaser.Scene {
             this.gameOver();
         };
         this.player.shoot = () => {
-            console.log('Player shooting (fallback)');
             const bullet = this.bullets.get();
             if (bullet) {
                 bullet.fire(this.player.x, this.player.y - 20, 0, -300);
@@ -1791,7 +2084,6 @@ export class GameScene extends Phaser.Scene {
         this.player.setDirection = () => {};
         this.player.setMoving = () => {};
         
-        console.log('Fallback player created');
     }
 
     createMainPlayerNameTag() {
@@ -1810,13 +2102,11 @@ export class GameScene extends Phaser.Scene {
             
             // Removed above-character health bar - using UI panel instead
             
-            console.log('Main player name tag created');
         }
     }
 
     createSquad() {
         // Create NPC squad members with different configurations
-        console.log('Creating full 6-person squad (5 NPCs + 1 Leader)...');
         
         // Squad member configurations
         const squadConfigs = [
@@ -1880,14 +2170,11 @@ export class GameScene extends Phaser.Scene {
                 const squadMember = new NPCPlayer(this, startX, startY, config);
                 this.squadMembers.add(squadMember);
                 
-                console.log(`Squad member '${config.name}' created at position (${startX}, ${startY})`);
             } catch (error) {
                 console.error(`Error creating squad member '${config.name}':`, error);
             }
         });
         
-        console.log(`Full squad creation complete! Total: ${this.squadMembers.children.size} NPCs + 1 Leader = ${this.squadMembers.children.size + 1} total`);
-        console.log('Squad formation: Charlie/Delta (front scouts), Alpha/Bravo (mid-line), Echo (rear guard)');
     }
 
     updateHTMLSquadStatus() {
@@ -2005,7 +2292,6 @@ export class GameScene extends Phaser.Scene {
             alpha: 0.8
         }).setDepth(2000).setScrollFactor(0);
         
-        console.log('Squad command UI created');
     }
     
     toggleSquadMode() {
@@ -2051,15 +2337,15 @@ export class GameScene extends Phaser.Scene {
         if (targetZombie) {
             // Ping specific zombie for focus fire
             this.setPingTarget(targetZombie);
-            console.log(`🎯 Ping target set: Zombie at (${targetZombie.x.toFixed(0)}, ${targetZombie.y.toFixed(0)})`);
+
         } else {
             // Ping location for movement/positioning
             this.setPingLocation(worldX, worldY);
-            console.log(`📍 Ping location set: (${worldX.toFixed(0)}, ${worldY.toFixed(0)})`);
+
             
             // If command wheel is open, also show enhanced feedback
             if (this.commandWheel) {
-                console.log(`🎯 Squad ordered to move while command wheel active`);
+
             }
         }
     }
@@ -2780,5 +3066,140 @@ export class GameScene extends Phaser.Scene {
                 }
             }
         });
+    }
+
+    zombieHitSentryGun(zombie, sentryGun) {
+        // Zombies can damage sentry guns
+        if (sentryGun && sentryGun.active && sentryGun.isActive) {
+            // Check if zombie can attack (cooldown)
+            const currentTime = this.time.now;
+            if (!zombie.lastSentryAttackTime) zombie.lastSentryAttackTime = 0;
+            
+            if (currentTime - zombie.lastSentryAttackTime < 1000) {
+                return; // Attack cooldown - prevent spam
+            }
+            
+            const destroyed = sentryGun.takeDamage(15, 'zombie'); // Increased damage
+            zombie.lastSentryAttackTime = currentTime;
+            
+            if (destroyed) {
+                console.log('🎯 Sentry gun destroyed by zombie!');
+                window.gameState.score -= 10; // Penalty for losing sentry gun
+                window.updateUI.score(window.gameState.score);
+            }
+            
+            // Zombie briefly stops to attack with proper animation
+            zombie.body.setVelocity(0, 0);
+            
+            // Visual attack effect
+            const attackEffect = this.add.circle(sentryGun.x, sentryGun.y, 8, 0xff0000, 0.6);
+            attackEffect.setDepth(1500);
+            this.tweens.add({
+                targets: attackEffect,
+                scaleX: 2,
+                scaleY: 2,
+                alpha: 0,
+                duration: 300,
+                ease: 'Power2',
+                onComplete: () => attackEffect.destroy()
+            });
+            
+            // Resume zombie movement after attack
+            this.time.delayedCall(800, () => {
+                if (zombie && zombie.body && zombie.active && this.player) {
+                    // Resume movement toward player
+                    const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+                    zombie.body.setVelocity(Math.cos(angle) * zombie.speed, Math.sin(angle) * zombie.speed);
+                }
+            });
+        }
+    }
+    
+    bulletHitSentryGun(bullet, sentryGun) {
+        // DEPRECATED: This method is no longer used since sentry guns now have friendly fire protection
+        // Sentry guns are now protected from friendly bullets like squad members
+        // Only zombies can damage sentry guns through zombieHitSentryGun method
+        
+        console.warn('⚠️ DEPRECATED: bulletHitSentryGun called - sentry guns should have friendly fire protection');
+        
+        // Legacy code kept for reference but should not be called:
+        /*
+        if (sentryGun && sentryGun.active && sentryGun.isActive) {
+            const destroyed = sentryGun.takeDamage(this.player.damage, 'bullet');
+            
+            if (destroyed) {
+                console.log('Sentry gun destroyed by friendly fire!');
+                window.gameState.score -= 10; // Larger penalty for friendly fire
+                window.updateUI.score(window.gameState.score);
+            } else {
+                // Create spark effect for non-lethal hits
+                this.createSparkEffect(bullet.x, bullet.y);
+            }
+        }
+        
+        // Remove bullet
+        bullet.deactivate();
+        */
+    }
+    
+    bulletHitSentryGunFriendly(bullet, sentryGun) {
+        // Safety check: ensure bullet is valid and has the deactivate method
+        if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
+            console.warn('⚠️ Invalid bullet in bulletHitSentryGunFriendly:', {
+                bullet: bullet,
+                bulletType: typeof bullet,
+                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
+                bulletActive: bullet ? bullet.active : 'N/A'
+            });
+            return; // Skip processing invalid bullets
+        }
+        
+        // Friendly fire prevention - bullets pass through sentry guns harmlessly
+        console.log('🛡️ Sentry gun friendly fire prevented:', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            sentryPos: { x: sentryGun.x.toFixed(2), y: sentryGun.y.toFixed(2) }
+        });
+        
+        // Create a subtle shield effect to show friendly fire prevention
+        const shieldEffect = this.add.circle(sentryGun.x, sentryGun.y, 25, 0x00BFFF, 0.3);
+        shieldEffect.setDepth(sentryGun.depth + 1);
+        
+        this.tweens.add({
+            targets: shieldEffect,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0,
+            duration: 200,
+            ease: 'Power2',
+            onComplete: () => shieldEffect.destroy()
+        });
+        
+        // DO NOT deactivate bullet - let it pass through sentry gun
+        // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
+        
+        console.log('💫 Bullet passed through sentry gun and continues traveling');
+    }
+    
+    checkSentryGunDamageCollisions(sentryGun) {
+        // Check zombie collisions (for attacking the sentry gun) - overlap only, not blocking
+        this.zombies.children.entries.forEach(zombie => {
+            if (zombie && zombie.active && zombie.body && sentryGun.body) {
+                if (this.physics.overlap(zombie, sentryGun)) {
+                    this.zombieHitSentryGun(zombie, sentryGun);
+                }
+            }
+        });
+        
+        // Bullet collisions removed - sentry guns now have friendly fire protection!
+        // Only zombies should be able to damage sentry guns, not friendly bullets
+        
+        // Note: Solid collision blocking is now handled by proper static body colliders
+        // set up in placeSentryGun method using this.physics.add.collider()
+    }
+    
+    separateBodies(movingBody, staticBody) {
+        // This method is no longer needed since we're using proper static body colliders
+        // Keeping for compatibility but it shouldn't be called anymore
+        console.warn('separateBodies called - this should not happen with proper static body colliders');
     }
 } 

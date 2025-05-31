@@ -31,6 +31,15 @@ export class SpriteScaler {
         tent: { targetWidth: 64, targetHeight: 48 },
         debris: { targetWidth: 32, targetHeight: 16 },
         
+        // Sentry gun sprites - bigger than player for better visibility as defensive unit
+        sentry_gun: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_right: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_left: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_up_right: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_up_left: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_down_right: { targetWidth: 48, targetHeight: 72 },
+        sentry_gun_down_left: { targetWidth: 48, targetHeight: 72 },
+        
         // Weapon sprites (small)
         pistol: { targetWidth: 16, targetHeight: 16 },
         rifle: { targetWidth: 24, targetHeight: 8 },

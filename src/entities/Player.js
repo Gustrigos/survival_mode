@@ -34,7 +34,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 reloadTime: 1500,
                 bulletSpeed: 500,
                 automatic: false,
-                icon: 'weapon_right'
+                icon: 'weapon_right',
+                type: 'weapon'
             },
             machineGun: {
                 ammo: 30,
@@ -44,9 +45,34 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 reloadTime: 2000,
                 bulletSpeed: 600,
                 automatic: true,
-                icon: 'machine_gun'
+                icon: 'machine_gun',
+                type: 'weapon'
             }
         };
+        
+        // Equipment/Item system (including weapons and placeable items)
+        this.equipment = {
+            1: {
+                type: 'weapon',
+                id: 'machineGun',
+                name: 'Machine Gun',
+                icon: 'machine_gun'
+            },
+            2: {
+                type: 'placeable',
+                id: 'sentryGun',
+                name: 'Sentry Gun',
+                icon: 'sentry_gun_right',
+                count: 3, // Start with 3 sentry guns
+                maxStack: 5
+            }
+        };
+        
+        this.currentSlot = 1; // Currently selected slot
+        
+        // Debug: Verify equipment initialization
+        console.log('🎒 Equipment initialized:', this.equipment);
+        console.log('🎯 Current slot:', this.currentSlot);
         
         // Current weapon stats (will be updated based on currentWeapon)
         this.ammo = this.weapons[this.currentWeapon].ammo;
@@ -326,17 +352,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (bullet) {
             bullet.fire(bulletStartX, bulletStartY, bulletVelX, bulletVelY);
             
-            // Log bullet state after firing
-            console.log('🟢 BULLET FIRED:', {
-                bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
-                bulletVel: { x: bullet.body.velocity.x, y: bullet.body.velocity.y },
-                bulletActive: bullet.active,
-                bulletVisible: bullet.visible,
-                bulletBodyEnabled: bullet.body.enable,
-                bulletScale: { x: bullet.scaleX.toFixed(3), y: bullet.scaleY.toFixed(3) },
-                bulletBodySize: { w: bullet.body.width, h: bullet.body.height },
-                bulletBodyOffset: { x: bullet.body.offset.x.toFixed(2), y: bullet.body.offset.y.toFixed(2) }
-            });
         } else {
             console.log('❌ NO BULLET AVAILABLE FROM POOL');
         }
@@ -508,5 +523,106 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     
     getCurrentWeaponName() {
         return this.currentWeapon;
+    }
+    
+    // Equipment/Item system methods
+    canEquipItem(itemType) {
+        return this.equipment[itemType] && this.equipment[itemType].count > 0;
+    }
+    
+    useItem(itemType) {
+        if (this.canEquipItem(itemType)) {
+            this.equipment[itemType].count--;
+            console.log(`Used ${itemType}, remaining: ${this.equipment[itemType].count}`);
+            return true;
+        }
+        return false;
+    }
+    
+    addItem(itemType, amount = 1) {
+        if (this.equipment[itemType]) {
+            const maxStack = this.equipment[itemType].maxStack;
+            const newCount = Math.min(this.equipment[itemType].count + amount, maxStack);
+            this.equipment[itemType].count = newCount;
+            console.log(`Added ${amount} ${itemType}, total: ${newCount}`);
+            return true;
+        }
+        return false;
+    }
+    
+    getCurrentSlotItemName() {
+        return this.equipment[this.currentSlot] ? this.equipment[this.currentSlot].name : '';
+    }
+    
+    getCurrentSlotItemIcon() {
+        return this.equipment[this.currentSlot] ? this.equipment[this.currentSlot].icon : '';
+    }
+    
+    // Switch to a specific equipment slot
+    switchToSlot(slotNumber) {
+        console.log(`switchToSlot called with slotNumber: ${slotNumber}`);
+        console.log(`Current slot: ${this.currentSlot}`);
+        console.log(`Available equipment:`, this.equipment);
+        
+        if (this.equipment[slotNumber]) {
+            this.currentSlot = slotNumber;
+            
+            // If switching to a weapon slot, update current weapon
+            if (this.equipment[slotNumber].type === 'weapon') {
+                this.switchWeapon(this.equipment[slotNumber].id);
+            }
+            
+            console.log(`✅ Successfully switched to slot ${slotNumber}: ${this.equipment[slotNumber].name}`);
+            return true;
+        } else {
+            console.log(`❌ No equipment found in slot ${slotNumber}`);
+            return false;
+        }
+    }
+    
+    // Get current slot equipment info
+    getCurrentSlotEquipment() {
+        return this.equipment[this.currentSlot];
+    }
+    
+    // Check if current slot can be used
+    canUseCurrentSlot() {
+        const equipment = this.getCurrentSlotEquipment();
+        if (!equipment) return false;
+        
+        if (equipment.type === 'weapon') {
+            return true; // Weapons can always be used (for shooting)
+        } else if (equipment.type === 'placeable') {
+            return equipment.count > 0;
+        }
+        
+        return false;
+    }
+    
+    // Use current slot (either shoot weapon or place item)
+    useCurrentSlot() {
+        const equipment = this.getCurrentSlotEquipment();
+        if (!equipment) return false;
+        
+        if (equipment.type === 'weapon') {
+            this.shoot();
+            return true;
+        } else if (equipment.type === 'placeable' && equipment.count > 0) {
+            // This will be handled by the game scene for placement
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Use a placeable item from current slot
+    usePlaceableItem() {
+        const equipment = this.getCurrentSlotEquipment();
+        if (equipment && equipment.type === 'placeable' && equipment.count > 0) {
+            equipment.count--;
+            console.log(`Used ${equipment.name}, remaining: ${equipment.count}`);
+            return true;
+        }
+        return false;
     }
 } 
