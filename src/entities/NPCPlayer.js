@@ -36,9 +36,15 @@ export class NPCPlayer extends Player {
         
         // Persistent pathfinding
         this.currentPathDirection = null; // Current chosen path direction
-        this.pathPersistenceTime = 2000; // Stick with chosen path for 2 seconds
+        this.pathPersistenceTime = 4000; // Stick with chosen path for 4 seconds (increased from 2 seconds)
         this.lastPathChoiceTime = 0;
         this.alternatePathIndex = 0; // Track which alternate path we're trying
+        
+        // Repositioning cooldowns to prevent spam
+        this.lastRepositionTime = 0;
+        this.repositionCooldown = 2000; // 2 second cooldown between repositioning attempts
+        this.lastBlockingCheckTime = 0;
+        this.blockingCheckInterval = 500; // Only check blocking every 500ms
         
         // === SQUAD COMMAND PROPERTIES ===
         this.squadMode = 'follow'; // 'follow' or 'hold' - controlled by player
@@ -192,10 +198,17 @@ export class NPCPlayer extends Player {
             return; // Skip all other AI logic during retreat
         }
         
-        // PRIORITY 3: Check if we're blocking the player's line of fire and move out of the way
-        if (this.isBlockingPlayer()) {
-            this.repositionToAvoidBlocking();
-            return; // Skip other AI logic while repositioning
+        // PRIORITY 3: Check if we're blocking the player's line of fire (with cooldown to prevent spam)
+        if (time - this.lastBlockingCheckTime > this.blockingCheckInterval && 
+            time - this.lastRepositionTime > this.repositionCooldown) {
+            
+            if (this.isBlockingPlayer()) {
+                this.lastBlockingCheckTime = time;
+                this.repositionToAvoidBlocking();
+                this.lastRepositionTime = time; // Set repositioning cooldown
+                return; // Skip other AI logic while repositioning
+            }
+            this.lastBlockingCheckTime = time;
         }
         
         // PRIORITY 4: If too far from leader AND NOT in hold mode, abandon combat and return to formation
@@ -325,9 +338,19 @@ export class NPCPlayer extends Player {
     repositionForClearShot() {
         if (!this.target || !this.target.active) return;
         
+        // Check if we're already too far from leader - if so, abandon target and return
+        const currentDistanceToLeader = this.scene.player ? 
+            Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
+        
+        if (currentDistanceToLeader > this.squadConfig.maxSeparation * 0.9) {
+            console.log(`${this.squadConfig.name} too far from leader, abandoning target to return to formation`);
+            this.target = null;
+            return;
+        }
+        
         // Try to find a better shooting position
         const targetAngle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
-        const repositionDistance = 60; // Distance to move for repositioning
+        const repositionDistance = 40; // Reduced from 60 to stay closer
         
         // Try multiple angles around the current position to find a clear shot
         const angles = [
@@ -335,8 +358,6 @@ export class NPCPlayer extends Player {
             targetAngle - Math.PI / 4,      // 45 degrees counter-clockwise
             targetAngle + Math.PI / 2,      // 90 degrees clockwise
             targetAngle - Math.PI / 2,      // 90 degrees counter-clockwise
-            targetAngle + 3 * Math.PI / 4,  // 135 degrees clockwise
-            targetAngle - 3 * Math.PI / 4   // 135 degrees counter-clockwise
         ];
         
         for (let angle of angles) {
@@ -351,10 +372,10 @@ export class NPCPlayer extends Player {
                 // Also check that we're not moving too far from formation
                 const distanceToLeader = Phaser.Math.Distance.Between(testX, testY, this.scene.player.x, this.scene.player.y);
                 
-                if (distanceToLeader <= this.squadConfig.maxSeparation) {
+                if (distanceToLeader <= this.squadConfig.maxSeparation * 0.8) { // Use 80% for safety
                     // Move to this position using smart pathfinding
                     const moveVector = this.calculateSmartMovement(testX, testY);
-                    const speed = 150; // Faster repositioning
+                    const speed = 120; // Reduced from 150 for more controlled movement
                     
                     // Apply the calculated movement vector with speed adjustment
                     const velocityX = moveVector.x * (speed / 120);
@@ -373,18 +394,9 @@ export class NPCPlayer extends Player {
             }
         }
         
-        // If no good repositioning angle found, just step back a bit to give space
-        const backwardAngle = targetAngle + Math.PI; // Opposite direction from target
-        const backupDistance = 30;
-        const backupX = this.x + Math.cos(backwardAngle) * backupDistance;
-        const backupY = this.y + Math.sin(backwardAngle) * backupDistance;
-        
-        // Only back up if it doesn't take us too far from leader
-        const distanceToLeader = Phaser.Math.Distance.Between(backupX, backupY, this.scene.player.x, this.scene.player.y);
-        if (distanceToLeader <= this.squadConfig.maxSeparation) {
-            this.setVelocity(Math.cos(backwardAngle) * 80, Math.sin(backwardAngle) * 80);
-            console.log(`${this.squadConfig.name} backing up to avoid friendly fire`);
-        }
+        // If no good repositioning angle found, abandon target instead of backing up unsafely
+        console.log(`${this.squadConfig.name} no safe repositioning found, abandoning target`);
+        this.target = null;
     }
     
     updateFollowBehavior() {
@@ -395,6 +407,10 @@ export class NPCPlayer extends Player {
         
         if (this.squadMode === 'hold' && this.holdPosition) {
             // Hold mode: stay at assigned hold position
+            desiredX = this.holdPosition.x;
+            desiredY = this.holdPosition.y;
+        } else if (this.squadMode === 'move' && this.holdPosition) {
+            // Move mode with hold position: stay at the location we were told to move to
             desiredX = this.holdPosition.x;
             desiredY = this.holdPosition.y;
         } else if (this.squadMode === 'move' && this.pingLocation) {
@@ -507,7 +523,7 @@ export class NPCPlayer extends Player {
             return this.performUnstuckManeuver(targetX, targetY, currentTime);
         }
         
-        // If we have a current path direction and it's still valid, stick with it
+        // If we have a current path direction and it's still valid, stick with it LONGER
         // But only in follow mode - always recalculate for squad commands
         if (this.currentPathDirection && 
             (currentTime - this.lastPathChoiceTime) < this.pathPersistenceTime &&
@@ -535,6 +551,8 @@ export class NPCPlayer extends Player {
             if (!isExecutingSquadCommand) {
                 this.currentPathDirection = directPath;
                 this.lastPathChoiceTime = currentTime;
+                // Reset alternate path index when we find a clear direct path
+                this.alternatePathIndex = 0;
             }
             return directPath;
         }
@@ -634,8 +652,11 @@ export class NPCPlayer extends Player {
         
         const baseAngle = Math.atan2(targetY - this.y, targetX - this.x);
         
+        // Don't constantly cycle - only try a few angles to reduce path switching
+        const maxAnglesToTry = 3; // Reduced from testing all 8 angles
+        
         // Start from where we left off to avoid constantly switching directions
-        for (let i = 0; i < angles.length; i++) {
+        for (let i = 0; i < maxAnglesToTry; i++) {
             const angleIndex = (this.alternatePathIndex + i) % angles.length;
             const testAngle = baseAngle + angles[angleIndex];
             const testVelX = Math.cos(testAngle) * 120;
@@ -643,12 +664,17 @@ export class NPCPlayer extends Player {
             
             // Check if this direction is clear
             if (!this.checkForObstacles(testVelX, testVelY)) {
-                // Update the index for next time
-                this.alternatePathIndex = angleIndex;
-                console.log(`${this.squadConfig.name} choosing alternate path: ${Phaser.Math.RadToDeg(testAngle).toFixed(0)}°`);
+                // Only update the index if we're trying a new direction
+                if (i > 0) {
+                    this.alternatePathIndex = angleIndex;
+                    console.log(`${this.squadConfig.name} choosing alternate path: ${Phaser.Math.RadToDeg(testAngle).toFixed(0)}°`);
+                }
                 return { x: testVelX, y: testVelY };
             }
         }
+        
+        // If the limited search didn't work, advance the index for next time
+        this.alternatePathIndex = (this.alternatePathIndex + 1) % angles.length;
         
         return null; // No clear path found
     }
@@ -993,8 +1019,8 @@ export class NPCPlayer extends Player {
         const player = this.scene.player;
         const playerDirection = player.direction;
         
-        // Skip check if player is not facing any direction
-        if (!playerDirection) {
+        // Skip check if player is not facing any direction OR not moving
+        if (!playerDirection || !player.moving) {
             return false;
         }
         
@@ -1031,7 +1057,7 @@ export class NPCPlayer extends Player {
                 break;
         }
         
-        // Check if NPC is in front of the player (within 60 pixels in facing direction)
+        // Check if NPC is in front of the player (within 80 pixels in facing direction) - increased from 60
         const directionX = this.x - player.x;
         const directionY = this.y - player.y;
         
@@ -1039,12 +1065,12 @@ export class NPCPlayer extends Player {
         const dotProduct = directionX * facingX + directionY * facingY;
         
         // If NPC is in front of player (positive dot product) and close to the line
-        if (dotProduct > 0 && dotProduct < 60) {
+        if (dotProduct > 0 && dotProduct < 80) { // Increased from 60 to 80
             // Calculate perpendicular distance from NPC to player's facing line
             const perpendicularDistance = Math.abs(directionX * facingY - directionY * facingX);
             
-            // If NPC is within 35 pixels of the player's facing line, they're blocking
-            if (perpendicularDistance < 35) {
+            // If NPC is within 50 pixels of the player's facing line, they're blocking - increased from 35
+            if (perpendicularDistance < 50) {
                 return true;
             }
         }
@@ -1056,15 +1082,15 @@ export class NPCPlayer extends Player {
     repositionToAvoidBlocking() {
         if (!this.scene.player || !this.scene.player.active) return;
         
-        // Calculate direction away from player
+        // Calculate direction away from player (but not too far)
         const angle = Phaser.Math.Angle.Between(this.scene.player.x, this.scene.player.y, this.x, this.y);
-        const repositionDistance = 50; // Distance to move away
+        const repositionDistance = 30; // Reduced from 50 - smaller movement
         
-        // Move perpendicular to avoid blocking player's movement path
+        // Move perpendicular to avoid blocking player's movement path (only try 2 directions)
         const perpAngle1 = angle + Math.PI / 2; // 90 degrees left
         const perpAngle2 = angle - Math.PI / 2; // 90 degrees right
         
-        // Test both perpendicular directions and choose the one that keeps us closer to formation
+        // Test both perpendicular directions
         const testX1 = this.x + Math.cos(perpAngle1) * repositionDistance;
         const testY1 = this.y + Math.sin(perpAngle1) * repositionDistance;
         const testX2 = this.x + Math.cos(perpAngle2) * repositionDistance;
@@ -1074,16 +1100,15 @@ export class NPCPlayer extends Player {
         const formationX = this.scene.player.x + this.squadConfig.formationOffset.x;
         const formationY = this.scene.player.y + this.squadConfig.formationOffset.y;
         
-        // Choose the safer position (one that keeps us within maxSeparation from leader)
+        // Choose the safer position (one that keeps us within safe separation from leader)
         const distanceToLeader1 = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, testX1, testY1);
         const distanceToLeader2 = Phaser.Math.Distance.Between(this.scene.player.x, this.scene.player.y, testX2, testY2);
         
         let targetX, targetY;
-        if (distanceToLeader1 <= this.squadConfig.maxSeparation && distanceToLeader2 <= this.squadConfig.maxSeparation) {
-            // Both positions are valid, choose the one closer to our formation position
-            const formationX = this.scene.player.x + this.squadConfig.formationOffset.x;
-            const formationY = this.scene.player.y + this.squadConfig.formationOffset.y;
-            
+        const maxSafeSeparation = this.squadConfig.maxSeparation * 0.7; // Use 70% for extra safety
+        
+        if (distanceToLeader1 <= maxSafeSeparation && distanceToLeader2 <= maxSafeSeparation) {
+            // Both positions are safe, choose the one closer to our formation position
             const distanceToFormation1 = Phaser.Math.Distance.Between(formationX, formationY, testX1, testY1);
             const distanceToFormation2 = Phaser.Math.Distance.Between(formationX, formationY, testX2, testY2);
             
@@ -1094,33 +1119,34 @@ export class NPCPlayer extends Player {
                 targetX = testX2;
                 targetY = testY2;
             }
-        } else if (distanceToLeader1 <= this.squadConfig.maxSeparation) {
+        } else if (distanceToLeader1 <= maxSafeSeparation) {
             targetX = testX1;
             targetY = testY1;
-        } else if (distanceToLeader2 <= this.squadConfig.maxSeparation) {
+        } else if (distanceToLeader2 <= maxSafeSeparation) {
             targetX = testX2;
             targetY = testY2;
         } else {
-            // Neither position is safe, use formation offset
-            targetX = this.scene.player.x + this.squadConfig.formationOffset.x;
-            targetY = this.scene.player.y + this.squadConfig.formationOffset.y;
+            // Neither position is safe, just move to formation position instead
+            targetX = formationX;
+            targetY = formationY;
         }
         
-        // Move to target position using smart pathfinding
-        const moveVector = this.calculateSmartMovement(targetX, targetY);
-        const speed = 100; // Moderate speed for avoidance
+        // Move to target position using direct movement (no pathfinding to avoid loops)
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Apply the calculated movement vector with speed adjustment
-        const velocityX = moveVector.x * (speed / 120);
-        const velocityY = moveVector.y * (speed / 120);
-        
-        this.setVelocity(velocityX, velocityY);
-        
-        const moveAngle = Math.atan2(velocityY, velocityX);
-        this.updateDirectionFromMovement(moveAngle);
-        this.setMoving(true);
-        
-        console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
+        if (distance > 5) { // Only move if the distance is meaningful
+            const speed = 80; // Slow, controlled movement
+            
+            this.setVelocity((dx / distance) * speed, (dy / distance) * speed);
+            
+            const moveAngle = Math.atan2(dy, dx);
+            this.updateDirectionFromMovement(moveAngle);
+            this.setMoving(true);
+            
+            console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
+        }
     }
     
     // === SQUAD COMMAND SYSTEM ===
@@ -1131,16 +1157,21 @@ export class NPCPlayer extends Player {
             return;
         }
         
-        // Handle mode transitions
+        // Handle mode transitions with proper cleanup
         if (this.squadMode === 'hold' && !this.holdPosition) {
             // Switching TO hold mode: set hold position at current location
             this.holdPosition = { x: this.x, y: this.y };
+            // Clear any ping locations when switching to hold mode
+            this.pingLocation = null;
+            this.isExecutingPing = false;
         } else if (this.squadMode === 'follow') {
-            // Switching TO follow mode: clear any hold positions (from both hold mode and move commands)
+            // Switching TO follow mode: clear ALL hold positions and ping locations
             this.holdPosition = null;
+            this.pingLocation = null;
+            this.isExecutingPing = false;
         } else if (this.squadMode === 'move') {
             // Switching TO move mode: clear any existing hold positions from previous hold commands
-            // (but keep hold positions created by move commands)
+            // (but keep hold positions created by move commands and keep ping locations for move commands)
             if (this.holdPosition && !this.isExecutingPing) {
                 // Only clear if we're not currently executing a move command
                 this.holdPosition = null;
@@ -1154,10 +1185,21 @@ export class NPCPlayer extends Player {
         if (!this.isDead && this.active) {
             this.updateNameTagWithCommand();
         }
+        
+        // Only log if there's an actual issue to debug
+        if ((this.squadMode === 'follow' && (this.pingLocation || this.holdPosition))) {
+            console.warn(`🔍 ${this.squadConfig.name} DEBUG: mode=${this.squadMode}, hasHoldPos=${!!this.holdPosition}, hasPingLoc=${!!this.pingLocation}, executing=${this.isExecutingPing}`);
+        }
     }
     
     executeSquadCommands(distanceToLeader) {
         // Return true if we're handling a specific command and should skip normal AI
+        
+        // DEBUG: Log if we have unexpected command state
+        if ((this.squadMode === 'follow' && this.pingLocation) || 
+            (this.squadMode === 'follow' && this.holdPosition)) {
+            console.warn(`⚠️ ${this.squadConfig.name} in FOLLOW mode but has pingLocation:`, this.pingLocation, 'holdPosition:', this.holdPosition);
+        }
         
         // PRIORITY 1: Execute ping target (focus fire)
         if (this.pingTarget && this.pingTarget.active) {
@@ -1178,8 +1220,8 @@ export class NPCPlayer extends Player {
             return true; // Skip normal AI
         }
         
-        // PRIORITY 2: Execute ping location (move to position) - works in both follow and move modes
-        if (this.pingLocation && (this.squadMode === 'follow' || this.squadMode === 'move')) {
+        // PRIORITY 2: Execute ping location (move to position) - ONLY in move mode now
+        if (this.pingLocation && this.squadMode === 'move') {
             const distanceToPing = Phaser.Math.Distance.Between(this.x, this.y, this.pingLocation.x, this.pingLocation.y);
             
             if (distanceToPing > 30) { // Move towards ping location
@@ -1212,18 +1254,19 @@ export class NPCPlayer extends Player {
                 
                 return true; // Skip normal AI
             } else {
-                // Reached ping location
-                if (this.squadMode === 'move') {
-                    // In move mode: convert ping location to hold position
-                    this.holdPosition = { x: this.pingLocation.x, y: this.pingLocation.y };
-                    this.pingLocation = null;
-                    this.isExecutingPing = false;
-                } else {
-                    // In follow mode: just clear the ping and resume following
-                    this.pingLocation = null;
-                    this.isExecutingPing = false;
-                }
+                // Reached ping location - convert to hold position and clear ping
+                this.holdPosition = { x: this.pingLocation.x, y: this.pingLocation.y };
+                this.pingLocation = null;
+                this.isExecutingPing = false;
+                console.log(`✅ ${this.squadConfig.name} reached move destination, converting to hold position`);
             }
+        }
+        
+        // PRIORITY 2.5: Clear any leftover ping locations in follow mode (phantom command cleanup)
+        if (this.squadMode === 'follow' && this.pingLocation) {
+            console.warn(`🧹 ${this.squadConfig.name} clearing phantom pingLocation in follow mode`);
+            this.pingLocation = null;
+            this.isExecutingPing = false;
         }
         
         // PRIORITY 3: Hold position mode - absolute hold
@@ -1258,9 +1301,9 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal AI
+                return true; // Skip normal AI while returning to position
             } else {
-                // At hold position, just scan for targets but don't move
+                // At hold position - stop moving but ALLOW combat
                 this.setVelocity(0, 0);
                 this.setMoving(false);
                 
@@ -1274,7 +1317,8 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal follow AI - stay in position
+                // DON'T return true here - allow normal AI combat to continue
+                // This allows target scanning and shooting while holding position
             }
         }
         
@@ -1310,9 +1354,9 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal AI
+                return true; // Skip normal AI while returning to position
             } else {
-                // At move destination, just scan for targets but don't move
+                // At move destination - stop moving but ALLOW combat
                 this.setVelocity(0, 0);
                 this.setMoving(false);
                 
@@ -1326,7 +1370,8 @@ export class NPCPlayer extends Player {
                     }
                 }
                 
-                return true; // Skip normal follow AI - stay at move destination
+                // DON'T return true here - allow normal AI combat to continue
+                // This allows target scanning and shooting while at move destination
             }
         }
         
@@ -1419,15 +1464,35 @@ export class NPCPlayer extends Player {
         }
         
         if (nearestObstacle) {
-            // Move directly away from nearest obstacle
+            // Calculate direction away from nearest obstacle
             const awayAngle = Phaser.Math.Angle.Between(nearestObstacle.x, nearestObstacle.y, this.x, this.y);
+            
+            // Check if moving away would take us too far from leader
+            const moveDistance = 100; // Distance to test movement
+            const testX = this.x + Math.cos(awayAngle) * moveDistance;
+            const testY = this.y + Math.sin(awayAngle) * moveDistance;
+            
+            const distanceToLeader = this.scene.player ? 
+                Phaser.Math.Distance.Between(testX, testY, this.scene.player.x, this.scene.player.y) : 0;
+            
+            // If moving away would take us too far, try moving toward leader instead
+            if (distanceToLeader > this.squadConfig.maxSeparation * 0.8) {
+                console.log(`${this.squadConfig.name} obstacle avoidance would go too far, moving toward leader instead`);
+                return this.getDirectPathToTarget(this.scene.player.x, this.scene.player.y);
+            }
+            
+            // Move directly away from nearest obstacle
             return {
                 x: Math.cos(awayAngle) * 120,
                 y: Math.sin(awayAngle) * 120
             };
         }
         
-        // No obstacle found, move in random direction
+        // No obstacle found, move toward leader instead of random direction
+        if (this.scene.player) {
+            return this.getDirectPathToTarget(this.scene.player.x, this.scene.player.y);
+        }
+        
         return this.moveInRandomDirection();
     }
     
@@ -1435,18 +1500,39 @@ export class NPCPlayer extends Player {
         const entrances = this.findNearestEntrances(targetX, targetY);
         
         if (entrances.length > 0) {
-            // Choose the furthest entrance (might be less crowded)
-            const furthestEntrance = entrances[entrances.length - 1];
-            const dx = furthestEntrance.x - this.x;
-            const dy = furthestEntrance.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Choose an entrance that keeps us within maxSeparation from leader
+            let validEntrance = null;
             
-            if (distance > 0) {
-                console.log(`${this.squadConfig.name} heading to furthest entrance at (${furthestEntrance.x}, ${furthestEntrance.y})`);
-                return {
-                    x: (dx / distance) * 120,
-                    y: (dy / distance) * 120
-                };
+            // Try furthest entrance first, but check if it's within safe distance
+            for (let i = entrances.length - 1; i >= 0; i--) {
+                const entrance = entrances[i];
+                const distanceToLeader = this.scene.player ? 
+                    Phaser.Math.Distance.Between(entrance.x, entrance.y, this.scene.player.x, this.scene.player.y) : 0;
+                
+                // Only use entrances that keep us within safe distance
+                if (distanceToLeader <= this.squadConfig.maxSeparation * 0.8) { // Use 80% of max separation for safety
+                    validEntrance = entrance;
+                    break;
+                }
+            }
+            
+            // If no valid entrance found, use the closest one
+            if (!validEntrance && entrances.length > 0) {
+                validEntrance = entrances[0]; // Closest entrance
+            }
+            
+            if (validEntrance) {
+                const dx = validEntrance.x - this.x;
+                const dy = validEntrance.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    console.log(`${this.squadConfig.name} heading to safe entrance at (${validEntrance.x}, ${validEntrance.y})`);
+                    return {
+                        x: (dx / distance) * 120,
+                        y: (dy / distance) * 120
+                    };
+                }
             }
         }
         

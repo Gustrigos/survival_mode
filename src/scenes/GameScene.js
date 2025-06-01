@@ -291,7 +291,7 @@ export class GameScene extends Phaser.Scene {
         this.setupCollisions();
         
         // Game state
-        this.zombiesInWave = 5;
+        this.zombiesInWave = 25; // Changed from 5 to 25 for more intense first wave
         this.zombiesSpawned = 0;
         this.zombieSpawnTimer = 0;
         this.waveStartDelay = 3000;
@@ -1646,7 +1646,7 @@ export class GameScene extends Phaser.Scene {
         
         this.zombieSpawnTimer += delta;
         
-        if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > 2000) {
+        if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > 500) { // Changed from 2000 to 500 for faster spawning
             this.spawnZombie();
             this.zombieSpawnTimer = 0;
             this.zombiesSpawned++;
@@ -1738,7 +1738,7 @@ export class GameScene extends Phaser.Scene {
         // Apply bullet knockback using zombie's new knockback system
         if (bullet.body && zombie.body && zombie.applyKnockback) {
             // Use bullet position as source of knockback with more realistic force
-            zombie.applyKnockback(bullet.x, bullet.y, 180, 400); // Reduced force and duration for realism
+            zombie.applyKnockback(bullet.x, bullet.y, 108, 400); // Reduced knockback force by 40% (was 180)
         }
         
         // Damage zombie
@@ -2150,7 +2150,13 @@ export class GameScene extends Phaser.Scene {
             window.gameState.wave++;
         }
         
-        this.zombiesInWave = 5 + (window.gameState.wave - 1) * 2; // Increase zombies each wave
+        // Set zombies per wave - first wave has 25, then increases from there
+        if (window.gameState.wave === 1) {
+            this.zombiesInWave = 25; // Intense first wave
+        } else {
+            this.zombiesInWave = 25 + (window.gameState.wave - 1) * 3; // Increase by 3 each wave after first
+        }
+        
         this.zombiesSpawned = 0;
         this.isWaveActive = true;
         
@@ -3541,6 +3547,9 @@ export class GameScene extends Phaser.Scene {
         // Switch back to follow mode after move command is executed
         this.squadMode = 'follow';
         this.updateSquadModeUI();
+        
+        // IMPORTANT: Notify squad members of mode change to prevent phantom move commands
+        this.updateSquadBehavior();
         
         console.log('🎯 Move command executed, switched back to Follow mode');
     }
