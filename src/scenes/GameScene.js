@@ -4,6 +4,7 @@ import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
 import { SentryGun } from '../entities/SentryGun.js';
+import { Barricade } from '../entities/Barricade.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
@@ -155,6 +156,9 @@ export class GameScene extends Phaser.Scene {
         
         // Initialize sentry guns list (not using physics group to avoid conflicts)
         this.sentryGunsList = [];
+        
+        // Initialize barricades list
+        this.barricadesList = [];
         
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
@@ -479,7 +483,7 @@ export class GameScene extends Phaser.Scene {
                 
                 // Crash site area (center of map)
                 if (x >= 800 && x <= 1200 && y >= 600 && y <= 900) {
-                    terrainType = 'rubble';
+                    terrainType = 'sand_texture';
                 }
                 // Urban areas with concrete
                 else if (x >= 256 && x <= 640 && y >= 448 && y <= 768) {
@@ -1107,6 +1111,27 @@ export class GameScene extends Phaser.Scene {
             });
         }
         
+        // Update barricades
+        if (this.barricadesList) {
+            // Update active barricades and remove destroyed ones
+            this.barricadesList = this.barricadesList.filter(barricade => {
+                if (barricade && barricade.active && barricade.isActive) {
+                    barricade.update(time, delta);
+                    
+                    // Manual collision checking for damage (overlap-based)
+                    this.checkBarricadeDamageCollisions(barricade);
+                    
+                    return true; // Keep in list
+                } else {
+                    // Barricade was destroyed - remove from list
+                    if (barricade) {
+                        console.log('🛡️ Removing destroyed barricade from barricadesList');
+                    }
+                    return false; // Remove from list
+                }
+            });
+        }
+        
         // Update inventory hotbar
         this.updateInventoryHotbar();
         
@@ -1269,9 +1294,11 @@ export class GameScene extends Phaser.Scene {
         if (equipment.type === 'weapon') {
             this.player.shoot();
         } else if (equipment.type === 'placeable') {
-            // Handle placement (e.g., sentry gun)
+            // Handle placement (e.g., sentry gun, barricade)
             if (equipment.id === 'sentryGun') {
                 this.placeSentryGun();
+            } else if (equipment.id === 'barricade') {
+                this.placeBarricade();
             }
         }
     }
@@ -1431,6 +1458,184 @@ export class GameScene extends Phaser.Scene {
         });
         
         console.log(`Sentry gun placed at (${placeX.toFixed(0)}, ${placeY.toFixed(0)})`);
+    }
+    
+    placeBarricade() {
+        try {
+            console.log('🛡️ Attempting to place barricade...');
+            
+            // Check if player has barricade in current slot
+            const equipment = this.player.getCurrentSlotEquipment();
+            if (!equipment || equipment.type !== 'placeable' || equipment.id !== 'barricade' || equipment.count <= 0) {
+                console.log('No barricade available in current slot');
+                return;
+            }
+            
+            console.log('🛡️ Barricade equipment check passed');
+            
+            // Calculate placement position in front of player based on direction
+            let offsetX = 0;
+            let offsetY = 0;
+            const placeDistance = 80; // Distance in front of player
+            
+            switch (this.player.direction) {
+                case 'up':
+                    offsetY = -placeDistance;
+                    break;
+                case 'down':
+                    offsetY = placeDistance;
+                    break;
+                case 'left':
+                    offsetX = -placeDistance;
+                    break;
+                case 'right':
+                    offsetX = placeDistance;
+                    break;
+                case 'up-left':
+                    offsetX = -placeDistance * 0.707;
+                    offsetY = -placeDistance * 0.707;
+                    break;
+                case 'up-right':
+                    offsetX = placeDistance * 0.707;
+                    offsetY = -placeDistance * 0.707;
+                    break;
+                case 'down-left':
+                    offsetX = -placeDistance * 0.707;
+                    offsetY = placeDistance * 0.707;
+                    break;
+                case 'down-right':
+                    offsetX = placeDistance * 0.707;
+                    offsetY = placeDistance * 0.707;
+                    break;
+                default:
+                    // Default to placing in front (down)
+                    offsetY = placeDistance;
+                    break;
+            }
+            
+            const placeX = this.player.x + offsetX;
+            const placeY = this.player.y + offsetY;
+            
+            console.log(`🛡️ Calculated placement position: ${placeX.toFixed(1)}, ${placeY.toFixed(1)}`);
+            
+            // Check if placement location is valid (not overlapping with structures)
+            let validPlacement = true;
+            
+            // Check collision with structures
+            this.structures.children.entries.forEach(structure => {
+                const distance = Phaser.Math.Distance.Between(placeX, placeY, structure.x, structure.y);
+                if (distance < 50) { // Reduced from 60 for smaller barricades
+                    validPlacement = false;
+                }
+            });
+            
+            // Check collision with other barricades
+            if (this.barricadesList) {
+                this.barricadesList.forEach(barricade => {
+                    if (barricade && barricade.active) {
+                        const distance = Phaser.Math.Distance.Between(placeX, placeY, barricade.x, barricade.y);
+                        if (distance < 50) { // Reduced from 80 for smaller barricades
+                            validPlacement = false;
+                        }
+                    }
+                });
+            }
+            
+            // Check collision with sentry guns too
+            if (this.sentryGunsList) {
+                this.sentryGunsList.forEach(sentryGun => {
+                    if (sentryGun && sentryGun.active) {
+                        const distance = Phaser.Math.Distance.Between(placeX, placeY, sentryGun.x, sentryGun.y);
+                        if (distance < 60) { // Don't place too close to sentry guns
+                            validPlacement = false;
+                        }
+                    }
+                });
+            }
+            
+            // Check if within world bounds
+            if (placeX < 50 || placeX > 1998 || placeY < 50 || placeY > 1486) {
+                validPlacement = false;
+            }
+            
+            if (!validPlacement) {
+                console.log('Cannot place barricade here - too close to other objects');
+                // Show visual feedback for invalid placement
+                const invalidMarker = this.add.circle(placeX, placeY, 30, 0xFF0000, 0.5);
+                invalidMarker.setDepth(1500);
+                this.tweens.add({
+                    targets: invalidMarker,
+                    alpha: 0,
+                    duration: 1000,
+                    onComplete: () => invalidMarker.destroy()
+                });
+                return;
+            }
+            
+            console.log('🛡️ Placement validation passed, creating barricade...');
+            
+            // Create barricade
+            const barricade = new Barricade(this, placeX, placeY);
+            
+            // Check if barricade creation was successful
+            if (!barricade || !barricade.active) {
+                console.error('❌ Failed to create barricade');
+                return;
+            }
+            
+            console.log('🛡️ Barricade created, setting up physics and colliders...');
+            
+            // Don't add to group manually - just store reference for updates
+            if (!this.barricadesList) {
+                this.barricadesList = [];
+            }
+            this.barricadesList.push(barricade);
+            
+            // Set up solid collisions for this barricade (blocks movement)
+            try {
+                this.physics.add.collider(this.player, barricade, (player, barricade) => {
+                    console.log('🎯 Player collided with barricade!');
+                });
+                
+                this.physics.add.collider(this.squadMembers, barricade, (unit, barricade) => {
+                    console.log('🎯 Squad member collided with barricade!');
+                });
+                
+                this.physics.add.collider(this.zombies, barricade, (zombie, barricade) => {
+                    console.log('🎯 Zombie collided with barricade!');
+                });
+                
+                // Add friendly fire protection for this barricade (same as squad members)
+                this.physics.add.overlap(this.bullets, barricade, this.bulletHitBarricadeFriendly, null, this);
+                
+                console.log('✅ Colliders set up successfully');
+                
+            } catch (colliderError) {
+                console.error('❌ Error setting up colliders:', colliderError);
+                // Continue anyway - the barricade might still work without some colliders
+            }
+            
+            // Use item from equipment
+            this.player.usePlaceableItem();
+            
+            // Visual feedback for successful placement
+            const successMarker = this.add.circle(placeX, placeY, 35, 0x00FF00, 0.5);
+            successMarker.setDepth(1500);
+            this.tweens.add({
+                targets: successMarker,
+                scaleX: 1.5,
+                scaleY: 1.5,
+                alpha: 0,
+                duration: 1000,
+                onComplete: () => successMarker.destroy()
+            });
+            
+            console.log(`✅ Barricade placed successfully at (${placeX.toFixed(0)}, ${placeY.toFixed(0)})`);
+            
+        } catch (error) {
+            console.error('❌ Critical error in placeBarricade:', error);
+            console.error('Stack trace:', error.stack);
+        }
     }
     
     handleZombieSpawning(time, delta) {
@@ -2181,6 +2386,7 @@ export class GameScene extends Phaser.Scene {
             const zombieCount = this.zombies ? this.zombies.children.size : 0;
             const squadCount = this.squadMembers ? this.squadMembers.children.size : 0;
             const sentryCount = this.sentryGunsList ? this.sentryGunsList.length : 0;
+            const barricadeCount = this.barricadesList ? this.barricadesList.length : 0;
             const currentEquipment = this.player ? this.player.getCurrentSlotEquipment() : null;
             const equipmentInfo = currentEquipment ? `${currentEquipment.name}${currentEquipment.count !== undefined ? ` (${currentEquipment.count})` : ''}` : 'None';
             
@@ -2188,11 +2394,12 @@ export class GameScene extends Phaser.Scene {
                 `Zombies: ${zombieCount}`,
                 `Squad Members: ${squadCount}`,
                 `Sentry Guns: ${sentryCount}`,
+                `Barricades: ${barricadeCount}`,
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
                 `Score: ${window.gameState.score || 0}`,
                 '',
-                'Press 1: Machine Gun, 2: Sentry Gun',
+                'Press 1: Machine Gun, 2: Sentry Gun, 3: Barricade',
                 'Press SPACE to shoot/place'
             ].join('\n'));
         }
@@ -3534,6 +3741,20 @@ export class GameScene extends Phaser.Scene {
         // set up in placeSentryGun method using this.physics.add.collider()
     }
     
+    checkBarricadeDamageCollisions(barricade) {
+        // Check zombie collisions (for attacking the barricade) - overlap only, not blocking
+        this.zombies.children.entries.forEach(zombie => {
+            if (zombie && zombie.active && zombie.body && barricade.body) {
+                if (this.physics.overlap(zombie, barricade)) {
+                    this.zombieHitBarricade(zombie, barricade);
+                }
+            }
+        });
+        
+        // Note: Friendly fire protection for barricades is handled by bulletHitBarricadeFriendly
+        // Zombie bullets can damage barricades, but friendly bullets pass through harmlessly
+    }
+    
     separateBodies(movingBody, staticBody) {
         // This method is no longer needed since we're using proper static body colliders
         // Keeping for compatibility but it shouldn't be called anymore
@@ -3622,6 +3843,109 @@ export class GameScene extends Phaser.Scene {
         } catch (error) {
             console.error('Failed to generate seamless roads:', error);
         }
+    }
+
+    zombieHitBarricade(zombie, barricade) {
+        // Zombies can damage barricades
+        if (barricade && barricade.active && barricade.isActive) {
+            // Check if zombie can attack (cooldown)
+            const currentTime = this.time.now;
+            if (!zombie.lastBarricadeAttackTime) zombie.lastBarricadeAttackTime = 0;
+            
+            if (currentTime - zombie.lastBarricadeAttackTime < 1200) {
+                return; // Attack cooldown - prevent spam
+            }
+            
+            const destroyed = barricade.takeDamage(20, 'zombie'); // Zombies do good damage to wood
+            zombie.lastBarricadeAttackTime = currentTime;
+            
+            if (destroyed) {
+                console.log('🛡️ Barricade destroyed by zombie!');
+                window.gameState.score -= 5; // Small penalty for losing barricade
+                window.updateUI.score(window.gameState.score);
+            }
+            
+            // Zombie briefly stops to attack
+            zombie.body.setVelocity(0, 0);
+            
+            // Visual attack effect
+            const attackEffect = this.add.circle(barricade.x, barricade.y, 8, 0xff0000, 0.6);
+            attackEffect.setDepth(1500);
+            this.tweens.add({
+                targets: attackEffect,
+                scaleX: 2,
+                scaleY: 2,
+                alpha: 0,
+                duration: 300,
+                ease: 'Power2',
+                onComplete: () => attackEffect.destroy()
+            });
+            
+            // Resume zombie movement after attack
+            this.time.delayedCall(800, () => {
+                if (zombie && zombie.body && zombie.active && this.player) {
+                    // Resume movement toward player
+                    const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+                    zombie.body.setVelocity(Math.cos(angle) * zombie.speed, Math.sin(angle) * zombie.speed);
+                }
+            });
+        }
+    }
+    
+    bulletHitBarricadeFriendly(bullet, barricade) {
+        // Safety check: ensure bullet is valid and has the deactivate method
+        if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
+            console.warn('⚠️ Invalid bullet in bulletHitBarricadeFriendly:', {
+                bullet: bullet,
+                bulletType: typeof bullet,
+                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
+                bulletActive: bullet ? bullet.active : 'N/A'
+            });
+            return; // Skip processing invalid bullets
+        }
+        
+        // Barricades have friendly fire protection - friendly bullets pass through
+        console.log('🛡️ Barricade friendly fire prevented:', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            barricadePos: { x: barricade.x.toFixed(2), y: barricade.y.toFixed(2) }
+        });
+        
+        // Create small wood chip effects when bullet hits barricade
+        const chipCount = 2;
+        
+        for (let i = 0; i < chipCount; i++) {
+            // Random offset around the impact point
+            const offsetX = (Math.random() - 0.5) * 15;
+            const offsetY = (Math.random() - 0.5) * 10;
+            
+            // Small wood chip - brown color
+            const chip = this.add.rectangle(
+                barricade.x + offsetX, 
+                barricade.y + offsetY, 
+                1.5, 2, 
+                0x8B4513 // Brown wood color
+            );
+            
+            chip.setDepth(barricade.depth + 50);
+            chip.setAlpha(0.6);
+            
+            // Small upward drift with random spread
+            this.tweens.add({
+                targets: chip,
+                y: chip.y - Phaser.Math.Between(6, 12), // Small upward movement
+                x: chip.x + Phaser.Math.Between(-6, 6), // Random horizontal drift
+                alpha: 0,
+                rotation: Math.random() * Math.PI,
+                duration: Phaser.Math.Between(600, 1000), // Varying duration
+                ease: 'Linear',
+                onComplete: () => chip.destroy()
+            });
+        }
+        
+        // DO NOT deactivate bullet - let it pass through barricade
+        // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
+        
+        console.log('💫 Bullet passed through barricade and continues traveling');
     }
 }
 

@@ -25,6 +25,12 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.attackCooldown = 1000; // 1 second between attacks
         this.lastAttackTime = 0;
         
+        // Barricade attack properties
+        this.targetBarricade = null; // Barricade the zombie is trying to destroy
+        this.lastBarricadeAttackTime = 0;
+        this.barricadeAttackCooldown = 1200; // 1.2 seconds between barricade attacks
+        this.barricadeAttackRange = 45; // Range to attack barricades
+        
         // Knockback properties
         this.isKnockedBack = false;
         this.knockbackEndTime = 0;
@@ -93,6 +99,34 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             this.isKnockedBack = false;
         }
         
+        // Clean up destroyed barricade target
+        if (this.targetBarricade && (!this.targetBarricade.active || this.targetBarricade.health <= 0)) {
+            console.log(`🧟 Zombie's target barricade destroyed - resuming player chase`);
+            this.targetBarricade = null;
+        }
+        
+        // STUCK DETECTION: If zombie is moving very slowly and there's a barricade nearby, attack it
+        if (!this.isKnockedBack && !this.targetBarricade) {
+            const currentSpeed = Math.sqrt(this.body.velocity.x ** 2 + this.body.velocity.y ** 2);
+            
+            // If zombie is trying to move but going very slowly (stuck against something)
+            if (currentSpeed < 20 && this.body.velocity.x !== 0 && this.body.velocity.y !== 0) {
+                // Look for nearby barricades to attack
+                if (this.scene.barricadesList) {
+                    for (let barricade of this.scene.barricadesList) {
+                        if (barricade && barricade.active) {
+                            const distance = Phaser.Math.Distance.Between(this.x, this.y, barricade.x, barricade.y);
+                            if (distance < 70) { // Very close
+                                this.targetBarricade = barricade;
+                                console.log(`🧟 Zombie stuck against barricade - forcing attack mode! Distance: ${distance.toFixed(1)}, Speed: ${currentSpeed.toFixed(1)}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         // Gradual velocity reduction during knockback for more natural physics
         if (this.isKnockedBack) {
             const currentVelocity = Math.sqrt(this.body.velocity.x ** 2 + this.body.velocity.y ** 2);
@@ -111,8 +145,8 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Update animation
         this.updateAnimation(time);
         
-        // Occasionally change direction for more natural movement (only if not knocked back)
-        if (!this.isKnockedBack && time - this.lastDirectionChange > this.directionChangeInterval) {
+        // Occasionally change direction for more natural movement (only if not knocked back and not attacking barricade)
+        if (!this.isKnockedBack && !this.targetBarricade && time - this.lastDirectionChange > this.directionChangeInterval) {
             this.addRandomMovement();
             this.lastDirectionChange = time;
         }
@@ -147,14 +181,80 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         if (!closestTarget) return;
         
-        // Smart pathfinding: check for obstacles in direct path
+        // PRIORITY 0: Check if we're touching any barricade and should attack it
+        if (!this.targetBarricade) {
+            // Look for barricades we're very close to (touching)
+            if (this.scene.barricadesList) {
+                for (let barricade of this.scene.barricadesList) {
+                    if (barricade && barricade.active) {
+                        const distance = Phaser.Math.Distance.Between(this.x, this.y, barricade.x, barricade.y);
+                        if (distance < 60) { // Very close - practically touching
+                            // Check if this barricade is between us and the player
+                            const angleToPlayer = Phaser.Math.Angle.Between(this.x, this.y, closestTarget.x, closestTarget.y);
+                            const angleToBarricade = Phaser.Math.Angle.Between(this.x, this.y, barricade.x, barricade.y);
+                            const angleDifference = Math.abs(angleToPlayer - angleToBarricade);
+                            
+                            // If barricade is roughly in the direction of the player (within 45 degrees)
+                            if (angleDifference < Math.PI / 4 || angleDifference > (2 * Math.PI - Math.PI / 4)) {
+                                this.targetBarricade = barricade;
+                                console.log(`🧟 Zombie in contact with barricade - switching to attack mode! Distance: ${distance.toFixed(1)}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // PRIORITY 1: If we have a target barricade, attack it first
+        if (this.targetBarricade && this.targetBarricade.active) {
+            const distanceToBarricade = Phaser.Math.Distance.Between(this.x, this.y, this.targetBarricade.x, this.targetBarricade.y);
+            
+            if (distanceToBarricade <= this.barricadeAttackRange) {
+                // Close enough to attack the barricade
+                this.attackBarricade();
+                this.setVelocity(0, 0); // Stop moving while attacking
+                
+                // Check if barricade still exists after attack (might have been destroyed)
+                if (this.targetBarricade && this.targetBarricade.active) {
+                    // Face the barricade while attacking
+                    const barricadeDirection = this.getDirectionToTarget(this.targetBarricade);
+                    this.updateDirection(barricadeDirection.x, barricadeDirection.y);
+                }
+                
+                return; // Don't move while attacking barricade
+            } else {
+                // Move towards the barricade to attack it
+                const pathToBarricade = this.getDirectPathToTarget(this.targetBarricade);
+                this.setVelocity(pathToBarricade.x, pathToBarricade.y);
+                this.updateDirection(pathToBarricade.x, pathToBarricade.y);
+                
+                console.log(`🧟 Zombie moving to attack barricade at (${this.targetBarricade.x.toFixed(1)}, ${this.targetBarricade.y.toFixed(1)})`);
+                return;
+            }
+        }
+        
+        // PRIORITY 2: Check for barricades blocking path to player
         const directPath = this.getDirectPathToTarget(closestTarget);
         const obstacleAhead = this.checkForObstacles(directPath.x, directPath.y);
         
+        if (obstacleAhead && obstacleAhead.structureType === 'barricade') {
+            // Barricade is blocking our path - set it as target to destroy
+            this.targetBarricade = obstacleAhead;
+            console.log(`🧟 Zombie targeting barricade for destruction - it's blocking path to player!`);
+            
+            // Move towards the barricade to attack it
+            const pathToBarricade = this.getDirectPathToTarget(this.targetBarricade);
+            this.setVelocity(pathToBarricade.x, pathToBarricade.y);
+            this.updateDirection(pathToBarricade.x, pathToBarricade.y);
+            return;
+        }
+        
+        // PRIORITY 3: Normal pathfinding (no barricade blocking)
         let finalVelocity = directPath;
         
         if (obstacleAhead) {
-            // Find alternate path around obstacles
+            // Some other obstacle (not barricade) - try to go around it
             const alternatePath = this.findAlternatePath(closestTarget);
             if (alternatePath) {
                 finalVelocity = alternatePath;
@@ -188,8 +288,14 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         return { x: 0, y: 0 };
     }
     
+    getDirectionToTarget(target) {
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        return { x: dx, y: dy };
+    }
+    
     checkForObstacles(velX, velY) {
-        // Check for sandbags in front of zombie
+        // Check for sandbags and barricades in front of zombie
         const lookAheadDistance = 80; // Distance to look ahead
         const futureX = this.x + (velX / this.speed) * lookAheadDistance;
         const futureY = this.y + (velY / this.speed) * lookAheadDistance;
@@ -201,6 +307,18 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
                     const distance = Phaser.Math.Distance.Between(futureX, futureY, structure.x, structure.y);
                     if (distance < 50) { // Within obstacle range
                         return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        // Also check for barricades in the barricadesList
+        if (this.scene.barricadesList) {
+            for (let barricade of this.scene.barricadesList) {
+                if (barricade && barricade.active) {
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, barricade.x, barricade.y);
+                    if (distance < 50) { // Within obstacle range for barricades
+                        return barricade; // Return the barricade obstacle
                     }
                 }
             }
@@ -460,6 +578,74 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             if (this.active) {
                 this.clearTint();
             }
+        });
+    }
+    
+    attackBarricade() {
+        const currentTime = this.scene.time.now;
+        
+        // Check attack cooldown
+        if (currentTime - this.lastBarricadeAttackTime < this.barricadeAttackCooldown) {
+            return;
+        }
+        
+        // Verify barricade still exists and is in range
+        if (!this.targetBarricade || !this.targetBarricade.active) {
+            this.targetBarricade = null;
+            return;
+        }
+        
+        const distanceToBarricade = Phaser.Math.Distance.Between(this.x, this.y, this.targetBarricade.x, this.targetBarricade.y);
+        if (distanceToBarricade > this.barricadeAttackRange) {
+            return; // Too far to attack
+        }
+        
+        // Store barricade position BEFORE potentially destroying it
+        const barricadeX = this.targetBarricade.x;
+        const barricadeY = this.targetBarricade.y;
+        
+        // Attack the barricade
+        this.lastBarricadeAttackTime = currentTime;
+        
+        // ACTUALLY DAMAGE THE BARRICADE
+        const destroyed = this.targetBarricade.takeDamage(20, 'zombie'); // 20 damage per zombie attack
+        
+        if (destroyed) {
+            console.log(`🧟 Zombie destroyed barricade!`);
+            this.targetBarricade = null; // Clear target since it's destroyed
+        } else {
+            console.log(`🧟 Zombie attacked barricade! Health: ${this.targetBarricade.health}/${this.targetBarricade.maxHealth}`);
+        }
+        
+        // Visual attack effect on zombie
+        this.setTint(0xff6666);
+        this.scene.time.delayedCall(200, () => {
+            if (this.active) {
+                this.clearTint();
+            }
+        });
+        
+        // Scale up briefly for attack animation
+        this.scene.tweens.add({
+            targets: this,
+            scaleX: this.scaleX * 1.2,
+            scaleY: this.scaleY * 1.2,
+            duration: 150,
+            yoyo: true,
+            ease: 'Power2'
+        });
+        
+        // Create attack effect at barricade location (use stored position)
+        const attackEffect = this.scene.add.circle(barricadeX, barricadeY, 12, 0xff4444, 0.7);
+        attackEffect.setDepth(1500);
+        this.scene.tweens.add({
+            targets: attackEffect,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0,
+            duration: 400,
+            ease: 'Power2',
+            onComplete: () => attackEffect.destroy()
         });
     }
 } 

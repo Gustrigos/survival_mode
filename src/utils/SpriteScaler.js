@@ -31,6 +31,11 @@ export class SpriteScaler {
         tent: { targetWidth: 64, targetHeight: 48 },
         debris: { targetWidth: 32, targetHeight: 16 },
         
+        // Barricade sprites - same size as sandbags
+        barricade: { targetWidth: 32, targetHeight: 16 },
+        broken_barricade: { targetWidth: 32, targetHeight: 16 },
+        much_broken_barricade: { targetWidth: 32, targetHeight: 16 },
+        
         // Sentry gun sprites - bigger than player for better visibility as defensive unit
         sentry_gun: { targetWidth: 48, targetHeight: 72 },
         sentry_gun_right: { targetWidth: 48, targetHeight: 72 },

@@ -85,6 +85,11 @@ export class SpriteLoader {
         scene.load.image('sentry_gun_up_right', 'src/assets/sprites/crafts/sentry_gun_up_right.png');
         scene.load.image('sentry_gun_down_right', 'src/assets/sprites/crafts/sentry_gun_down_right.png');
         
+        // Load barricade sprites
+        scene.load.image('barricade', 'src/assets/sprites/crafts/barricade.png');
+        scene.load.image('broken_barricade', 'src/assets/sprites/crafts/broken_barricade.png');
+        scene.load.image('much_broken_barricade', 'src/assets/sprites/crafts/much_broken_barricade.png');
+        
         // Create left-facing sprites by flipping right-facing ones after loading
         scene.load.once('complete', () => {
             SpriteLoader.createSentryGunLeftSprites(scene);

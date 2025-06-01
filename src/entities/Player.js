@@ -65,6 +65,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 icon: 'sentry_gun_right',
                 count: 3, // Start with 3 sentry guns
                 maxStack: 5
+            },
+            3: {
+                type: 'placeable',
+                id: 'barricade',
+                name: 'Barricade',
+                icon: 'barricade',
+                count: 5, // Start with 5 barricades
+                maxStack: 10
             }
         };
         

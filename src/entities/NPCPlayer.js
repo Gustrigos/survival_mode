@@ -580,7 +580,7 @@ export class NPCPlayer extends Player {
         const futureX = this.x + (velX / 120) * lookAheadDistance; // Assume base speed of 120
         const futureY = this.y + (velY / 120) * lookAheadDistance;
         
-        // Check collision with sandbags and other solid structures
+        // Check collision with sandbags, barricades, and other solid structures
         if (this.scene.structures) {
             for (let structure of this.scene.structures.children.entries) {
                 if (structure.active && (structure.structureType === 'sandbags' || 
@@ -598,6 +598,18 @@ export class NPCPlayer extends Player {
                     
                     if (distance < obstacleRange) {
                         return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        // Also check for barricades in the barricadesList
+        if (this.scene.barricadesList) {
+            for (let barricade of this.scene.barricadesList) {
+                if (barricade && barricade.active) {
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, barricade.x, barricade.y);
+                    if (distance < 50) { // Within obstacle range for barricades
+                        return barricade; // Return the barricade obstacle
                     }
                 }
             }
@@ -1376,7 +1388,7 @@ export class NPCPlayer extends Player {
         let nearestObstacle = null;
         let nearestDistance = Infinity;
         
-        // Find nearest obstacle
+        // Find nearest obstacle in structures
         if (this.scene.structures) {
             this.scene.structures.children.entries.forEach(structure => {
                 if (structure.active && (structure.structureType === 'sandbags' || 
@@ -1388,6 +1400,19 @@ export class NPCPlayer extends Player {
                     if (distance < nearestDistance) {
                         nearestDistance = distance;
                         nearestObstacle = structure;
+                    }
+                }
+            });
+        }
+        
+        // Also find nearest barricade
+        if (this.scene.barricadesList) {
+            this.scene.barricadesList.forEach(barricade => {
+                if (barricade && barricade.active) {
+                    const distance = Phaser.Math.Distance.Between(this.x, this.y, barricade.x, barricade.y);
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestObstacle = barricade;
                     }
                 }
             });
