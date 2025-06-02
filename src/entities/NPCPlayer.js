@@ -598,7 +598,7 @@ export class NPCPlayer extends Player {
         const futureX = this.x + (velX / 120) * lookAheadDistance; // Assume base speed of 120
         const futureY = this.y + (velY / 120) * lookAheadDistance;
         
-        // Check collision with sandbags, barricades, and other solid structures
+        // Check collision with old sandbags, barricades, and other solid structures
         if (this.scene.structures) {
             for (let structure of this.scene.structures.children.entries) {
                 if (structure.active && (structure.structureType === 'sandbags' || 
@@ -616,6 +616,18 @@ export class NPCPlayer extends Player {
                     
                     if (distance < obstacleRange) {
                         return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        // Check collision with new sandbags in sandbagsList
+        if (this.scene.sandbagsList) {
+            for (let sandbag of this.scene.sandbagsList) {
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, sandbag.x, sandbag.y);
+                    if (distance < 50) { // Within obstacle range for sandbags
+                        return sandbag; // Return the sandbag obstacle
                     }
                 }
             }
@@ -1433,7 +1445,7 @@ export class NPCPlayer extends Player {
         let nearestObstacle = null;
         let nearestDistance = Infinity;
         
-        // Find nearest obstacle in structures
+        // Find nearest obstacle in old structures
         if (this.scene.structures) {
             this.scene.structures.children.entries.forEach(structure => {
                 if (structure.active && (structure.structureType === 'sandbags' || 
@@ -1445,6 +1457,19 @@ export class NPCPlayer extends Player {
                     if (distance < nearestDistance) {
                         nearestDistance = distance;
                         nearestObstacle = structure;
+                    }
+                }
+            });
+        }
+        
+        // Find nearest obstacle in new sandbagsList
+        if (this.scene.sandbagsList) {
+            this.scene.sandbagsList.forEach(sandbag => {
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    const distance = Phaser.Math.Distance.Between(this.x, this.y, sandbag.x, sandbag.y);
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestObstacle = sandbag;
                     }
                 }
             });

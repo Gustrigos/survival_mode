@@ -61,7 +61,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             // Set body size and center it (true flag centers automatically)
             this.body.setSize(collisionWidth, collisionHeight, true);
             
-            console.log(`Zombie sprite sheet body: ${collisionWidth.toFixed(1)}x${collisionHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         } else {
             this.setScale(1); // Normal scale
             
@@ -73,7 +72,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             // Set body size and center it automatically
             this.body.setSize(bodyWidth, bodyHeight, true);
             
-            console.log(`Zombie placeholder body: ${bodyWidth.toFixed(1)}x${bodyHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         }
         
         // Make sure sprite is visible and properly scaled
@@ -84,13 +82,7 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         // Set initial texture
         this.setTexture(textureKey);
-        
-        console.log('Zombie created with texture:', this.texture.key);
-        console.log('Zombie position:', this.x, this.y);
-        console.log('Zombie scale:', this.scaleX, this.scaleY);
-        console.log('Zombie visible:', this.visible);
-        console.log('Zombie alpha:', this.alpha);
-        console.log('Zombie depth:', this.depth);
+
     }
     
     update(time, delta) {
@@ -101,7 +93,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         // Clean up destroyed barricade target
         if (this.targetBarricade && (!this.targetBarricade.active || this.targetBarricade.health <= 0)) {
-            console.log(`🧟 Zombie's target barricade destroyed - resuming player chase`);
             this.targetBarricade = null;
         }
         
@@ -118,7 +109,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
                             const distance = Phaser.Math.Distance.Between(this.x, this.y, barricade.x, barricade.y);
                             if (distance < 70) { // Very close
                                 this.targetBarricade = barricade;
-                                console.log(`🧟 Zombie stuck against barricade - forcing attack mode! Distance: ${distance.toFixed(1)}, Speed: ${currentSpeed.toFixed(1)}`);
                                 break;
                             }
                         }
@@ -197,7 +187,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
                             // If barricade is roughly in the direction of the player (within 45 degrees)
                             if (angleDifference < Math.PI / 4 || angleDifference > (2 * Math.PI - Math.PI / 4)) {
                                 this.targetBarricade = barricade;
-                                console.log(`🧟 Zombie in contact with barricade - switching to attack mode! Distance: ${distance.toFixed(1)}`);
                                 break;
                             }
                         }
@@ -229,7 +218,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
                 this.setVelocity(pathToBarricade.x, pathToBarricade.y);
                 this.updateDirection(pathToBarricade.x, pathToBarricade.y);
                 
-                console.log(`🧟 Zombie moving to attack barricade at (${this.targetBarricade.x.toFixed(1)}, ${this.targetBarricade.y.toFixed(1)})`);
                 return;
             }
         }
@@ -241,7 +229,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         if (obstacleAhead && obstacleAhead.structureType === 'barricade') {
             // Barricade is blocking our path - set it as target to destroy
             this.targetBarricade = obstacleAhead;
-            console.log(`🧟 Zombie targeting barricade for destruction - it's blocking path to player!`);
             
             // Move towards the barricade to attack it
             const pathToBarricade = this.getDirectPathToTarget(this.targetBarricade);
@@ -300,13 +287,25 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         const futureX = this.x + (velX / this.speed) * lookAheadDistance;
         const futureY = this.y + (velY / this.speed) * lookAheadDistance;
         
-        // Check collision with sandbags
+        // Check collision with old sandbags in structures (for backward compatibility)
         if (this.scene.structures) {
             for (let structure of this.scene.structures.children.entries) {
                 if (structure.structureType === 'sandbags' && structure.active) {
                     const distance = Phaser.Math.Distance.Between(futureX, futureY, structure.x, structure.y);
                     if (distance < 50) { // Within obstacle range
                         return structure; // Return the obstacle
+                    }
+                }
+            }
+        }
+        
+        // Check collision with new sandbags in sandbagsList
+        if (this.scene.sandbagsList) {
+            for (let sandbag of this.scene.sandbagsList) {
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    const distance = Phaser.Math.Distance.Between(futureX, futureY, sandbag.x, sandbag.y);
+                    if (distance < 50) { // Within obstacle range
+                        return sandbag; // Return the obstacle
                     }
                 }
             }
@@ -564,13 +563,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.isKnockedBack = true;
         this.knockbackEndTime = this.scene.time.now + duration;
         
-        console.log(`🔥 ZOMBIE KNOCKBACK APPLIED:`, {
-            force: force,
-            duration: duration + 'ms',
-            velocity: { x: velocityX.toFixed(1), y: velocityY.toFixed(1) },
-            position: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
-            endTime: this.knockbackEndTime
-        });
         
         // More subtle visual feedback
         this.setTint(0xff6666); // Lighter red tint
@@ -611,10 +603,8 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         const destroyed = this.targetBarricade.takeDamage(20, 'zombie'); // 20 damage per zombie attack
         
         if (destroyed) {
-            console.log(`🧟 Zombie destroyed barricade!`);
             this.targetBarricade = null; // Clear target since it's destroyed
         } else {
-            console.log(`🧟 Zombie attacked barricade! Health: ${this.targetBarricade.health}/${this.targetBarricade.maxHealth}`);
         }
         
         // Visual attack effect on zombie

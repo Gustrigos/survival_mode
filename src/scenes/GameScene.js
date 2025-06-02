@@ -5,6 +5,7 @@ import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
 import { SentryGun } from '../entities/SentryGun.js';
 import { Barricade } from '../entities/Barricade.js';
+import { Sandbag } from '../entities/Sandbag.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
@@ -160,6 +161,9 @@ export class GameScene extends Phaser.Scene {
         // Initialize barricades list
         this.barricadesList = [];
         
+        // Initialize sandbags list
+        this.sandbagsList = [];
+        
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
         
@@ -308,6 +312,14 @@ export class GameScene extends Phaser.Scene {
         // Update UI
         this.updateUI();
         
+        // NOW CREATE SANDBAGS - All systems are ready!
+        console.log('🛡️ All game systems initialized, now creating sandbags...');
+        try {
+            this.createCrashSiteSandbags();
+        } catch (sandbagError) {
+            console.error('❌ Error creating sandbags at end of create():', sandbagError);
+        }
+        
         console.log('GameScene create() completed');
         
         // Make this scene instance accessible for debugging
@@ -362,6 +374,22 @@ export class GameScene extends Phaser.Scene {
             }
             console.log(`Debug hit-box overlay ${this.showDebugBodies ? 'ON' : 'OFF'}`);
         });
+        
+        // SIMPLE TEST: Try to create one basic brown rectangle as a sandbag
+        console.log('🧪 TESTING: Creating simple test sandbag...');
+        try {
+            const testSandbag = this.add.rectangle(950, 700, 48, 32, 0xC2B280); // Brown rectangle
+            testSandbag.setDepth(700);
+            console.log('✅ TEST: Simple sandbag rectangle created successfully at (950, 700)');
+        } catch (testError) {
+            console.error('❌ TEST: Failed to create simple sandbag rectangle:', testError);
+        }
+        
+        // NOTE: Sandbag creation moved to end of create() method after all systems are ready
+        
+        console.log('✅ Helicopter beacon and label have been removed');
+        console.log('🚁 Smoke effects added to main helicopter only');
+        console.log('🛡️ Defensive sandbags will be added after all systems are ready');
     }
 
     createCrashSiteMap() {
@@ -523,10 +551,8 @@ export class GameScene extends Phaser.Scene {
                     // Debug specific terrain types
                     if (terrainType === 'dirt_road') {
                         const direction = rotation === 0 ? 'vertical' : 'horizontal';
-                        console.log(`🗺️ Creating ${direction} dirt_road tile at (${x}, ${y}) with rotation: ${rotation}`);
                     }
                     if (terrainType === 'sand_texture') {
-                        console.log(`🏖️ Creating sand_texture tile at (${x}, ${y}) using texture:`, terrainType);
                     }
                     
                     // Handle sprite sizing - ALL terrain sprites need to be larger to eliminate gaps
@@ -535,9 +561,7 @@ export class GameScene extends Phaser.Scene {
                     tile.setDisplaySize(tileSize * oversizeMultiplier, tileSize * oversizeMultiplier);
                     
                     if (terrainType === 'dirt_road') {
-                        console.log(`🛣️ Road sprite oversized to ${(tileSize * oversizeMultiplier).toFixed(0)}x${(tileSize * oversizeMultiplier).toFixed(0)} to eliminate gaps`);
                     } else {
-                        console.log(`🗺️ ${terrainType} sprite oversized to ${(tileSize * oversizeMultiplier).toFixed(0)}x${(tileSize * oversizeMultiplier).toFixed(0)} to eliminate gaps`);
                     }
                     
                     // Apply filtering based on configuration
@@ -559,16 +583,10 @@ export class GameScene extends Phaser.Scene {
                     
                     // Debug specific failures
                     if (terrainType === 'dirt_road') {
-                        console.error(`🚨 DIRT_ROAD TEXTURE MISSING! Using fallback rectangle at (${x}, ${y})`);
-                        console.log('Available textures:', Object.keys(this.textures.list));
-                        console.log('🔧 Expected file: src/assets/sprites/terrain/dirt_road.png');
-                        console.log('🔧 Make sure the file exists and the path is correct');
+
                     }
                     if (terrainType === 'sand_texture') {
-                        console.error(`🚨 SAND_TEXTURE MISSING! Using fallback rectangle at (${x}, ${y})`);
-                        console.log('Available textures:', Object.keys(this.textures.list));
-                        console.log('🔧 Expected file: src/assets/sprites/terrain/sand_texture.png');
-                        console.log('🔧 Make sure the file exists and the path is correct');
+    
                     }
                     
                     // Create fallback colored rectangles
@@ -584,7 +602,6 @@ export class GameScene extends Phaser.Scene {
             }
         }
         
-        console.log(`Terrain created successfully with ${(worldWidth/tileSize) * (worldHeight/tileSize)} tiles`);
     }
     
     createCrashSiteStructures() {
@@ -627,12 +644,25 @@ export class GameScene extends Phaser.Scene {
             // Add smoke effects to the main helicopter
             this.addHelicopterEffects(helicopter.x, helicopter.y);
             
+            // SIMPLE TEST: Try to create one basic brown rectangle as a sandbag
+            console.log('🧪 TESTING: Creating simple test sandbag...');
+            try {
+                const testSandbag = this.add.rectangle(950, 700, 48, 32, 0xC2B280); // Brown rectangle
+                testSandbag.setDepth(700);
+                console.log('✅ TEST: Simple sandbag rectangle created successfully at (950, 700)');
+            } catch (testError) {
+                console.error('❌ TEST: Failed to create simple sandbag rectangle:', testError);
+            }
+            
             // Add defensive sandbags around the crash site
-            this.createCrashSiteSandbags();
+            // console.log('🛡️ ABOUT TO CREATE SANDBAGS - calling createCrashSiteSandbags()...');
+            // this.createCrashSiteSandbags();
+            // console.log('🛡️ FINISHED CALLING createCrashSiteSandbags()');
+            // NOTE: Sandbag creation moved to end of create() method after all systems are ready
             
             console.log('✅ Helicopter beacon and label have been removed');
             console.log('🚁 Smoke effects added to main helicopter only');
-            console.log('🛡️ Defensive sandbags added around crash site');
+            console.log('🛡️ Defensive sandbags will be added after all systems are ready');
             
             // Simplified layout: skip additional burning wreckage and debris to reduce ground clutter
             return; // <-- no more structures after the main helicopter
@@ -740,6 +770,32 @@ export class GameScene extends Phaser.Scene {
     createCrashSiteSandbags() {
         console.log('Creating defensive sandbags around crash site...');
         
+        // Early safety check: ensure all required systems are ready
+        if (!this.textures || !this.physics || !this.player || !this.squadMembers || !this.zombies || !this.bullets) {
+            console.error('❌ Required game systems not ready for sandbag creation, skipping sandbags');
+            console.error('❌ Missing systems:', {
+                textures: !!this.textures,
+                physics: !!this.physics,
+                player: !!this.player,
+                squadMembers: !!this.squadMembers,
+                zombies: !!this.zombies,
+                bullets: !!this.bullets
+            });
+            return;
+        }
+        
+        console.log('✅ All required systems are ready for sandbag creation');
+        
+        // Check if sandbag texture exists before proceeding
+        if (!this.textures.exists('sandbags')) {
+            console.error('❌ Sandbag texture not found, skipping sandbag creation');
+            console.error('❌ Available textures containing "sand":', Object.keys(this.textures.list).filter(key => key.includes('sand')));
+            console.error('❌ All available textures:', Object.keys(this.textures.list).slice(0, 10)); // Show first 10 textures
+            return;
+        }
+        
+        console.log('✅ Sandbag texture found, proceeding with creation');
+        
         try {
             // Helicopter is at (1000, 750), rubble area is roughly 800-1200 x 600-900
             // Create sandbag perimeter around the crash site with strategic entrances
@@ -831,66 +887,110 @@ export class GameScene extends Phaser.Scene {
             ];
             
             // Create sandbag structures
-            allSandbagPositions.forEach(pos => {
-                const sandbag = this.createStructureWithFallback(pos.x, pos.y, 'sandbags', {
-                    type: 'sandbags',
-                    material: 'fabric',
-                    health: 150,
-                    destructible: true
-                }, 0xC2B280, 32, 16); // Reduced fallback size from 48x24 to 32x16
-                
-                // Apply proper scaling to make sandbags smaller
-                if (sandbag && sandbag.setScale) {
-                    SpriteScaler.autoScale(sandbag, 'sandbags', { maintainAspectRatio: true });
+            console.log(`🛡️ Attempting to create ${allSandbagPositions.length} sandbags...`);
+            let successfulSandbags = 0;
+            
+            allSandbagPositions.forEach((pos, index) => {
+                try {
+                    console.log(`🛡️ Creating sandbag ${index + 1}/${allSandbagPositions.length} at (${pos.x}, ${pos.y})`);
+                    const sandbag = new Sandbag(this, pos.x, pos.y);
                     
-                    // Make sandbags smaller - apply additional scaling
-                    const smallerScale = 0.6; // 60% of the auto-scaled size (40% smaller)
-                    sandbag.setScale(sandbag.scaleX * smallerScale, sandbag.scaleY * smallerScale);
+                    console.log(`🛡️ Sandbag constructor returned:`, {
+                        exists: !!sandbag,
+                        active: sandbag ? sandbag.active : 'N/A',
+                        isActive: sandbag ? sandbag.isActive : 'N/A',
+                        hasBody: sandbag ? !!sandbag.body : 'N/A',
+                        hasValidX: sandbag ? (!isNaN(sandbag.x) && sandbag.x !== undefined) : 'N/A',
+                        hasValidY: sandbag ? (!isNaN(sandbag.y) && sandbag.y !== undefined) : 'N/A',
+                        x: sandbag ? sandbag.x : 'N/A',
+                        y: sandbag ? sandbag.y : 'N/A'
+                    });
                     
-                    console.log(`🛡️ Sandbag scaled to: ${sandbag.displayWidth}x${sandbag.displayHeight}`);
-                }
-                
-                // Make physics body much smaller than the sprite (after all scaling is done)
-                if (sandbag.body && sandbag.body.setSize) {
-                    // 1 - get the visible size after all scaling
-                    const visW = sandbag.displayWidth;
-                    const visH = sandbag.displayHeight;
+                    // Check if sandbag creation was successful AND has all required properties
+                    // Make this check less restrictive - just check the essential properties
+                    if (!sandbag || !sandbag.active || !sandbag.isActive) {
+                        console.error('❌ Sandbag creation failed basic validation at', pos.x, pos.y);
+                        return;
+                    }
                     
-                    // 2 - make hit-box much smaller (60% width, 50% height)
-                    const bodyW = visW * 0.6;
-                    const bodyH = visH * 0.5;
+                    // Secondary check for physics body - but don't fail completely if missing
+                    if (!sandbag.body) {
+                        console.warn('⚠️ Sandbag has no physics body at', pos.x, pos.y, '- will skip colliders but keep sandbag');
+                    }
                     
-                    // 3 - apply size & center it inside the sprite
-                    sandbag.body.setSize(bodyW, bodyH);
-                    sandbag.body.setOffset(
-                        (visW - bodyW) / 2,
-                        (visH - bodyH) / 2
-                    );
+                    console.log('🛡️ Sandbag passed validation, adding to list...');
                     
-                    // 4 - static body refresh (required for static bodies)
-                    sandbag.body.updateFromGameObject();
+                    // Add to sandbags list for updates
+                    if (!this.sandbagsList) {
+                        this.sandbagsList = [];
+                    }
+                    this.sandbagsList.push(sandbag);
+                    successfulSandbags++;
                     
-                    // 5 - ensure it stays immovable
-                    sandbag.body.immovable = true;
-                    sandbag.body.moves = false;
-                    sandbag.body.pushable = false;
+                    // Set up solid collisions for this sandbag (blocks movement) - only if has body
+                    if (sandbag.body) {
+                        try {
+                            console.log('🛡️ Setting up colliders for sandbag...');
+                            
+                            // Set up colliders with additional safety wrapping
+                            this.physics.add.collider(this.player, sandbag, (player, sandbagObj) => {
+                                if (player && sandbagObj && player.active && sandbagObj.active) {
+                                    console.log('🎯 Player collided with sandbag!');
+                                }
+                            });
+                            
+                            this.physics.add.collider(this.squadMembers, sandbag, (unit, sandbagObj) => {
+                                if (unit && sandbagObj && unit.active && sandbagObj.active) {
+                                    console.log('🎯 Squad member collided with sandbag!');
+                                }
+                            });
+                            
+                            this.physics.add.collider(this.zombies, sandbag, (zombie, sandbagObj) => {
+                                if (zombie && sandbagObj && zombie.active && sandbagObj.active) {
+                                    console.log('🎯 Zombie collided with sandbag!');
+                                }
+                            });
+                            
+                            // Add friendly fire protection for this sandbag (bullets pass through)
+                            this.physics.add.overlap(this.bullets, sandbag, this.bulletHitSandbagFriendly, null, this);
+                            
+                            console.log('✅ Colliders set up successfully for sandbag');
+                            
+                        } catch (colliderError) {
+                            console.error('❌ Error setting up sandbag colliders (keeping sandbag anyway):', colliderError);
+                            // Don't remove sandbag from list - just skip colliders
+                        }
+                    } else {
+                        console.log('🛡️ Skipping collider setup for sandbag without physics body');
+                    }
                     
-                    console.log(`🛡️ Sandbag body resized to: ${bodyW.toFixed(1)}x${bodyH.toFixed(1)} (was ${visW.toFixed(1)}x${visH.toFixed(1)} sprite)`);
+                    console.log(`✅ Sandbag ${index + 1} placed successfully at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
+                    
+                } catch (sandbagError) {
+                    console.error(`❌ Critical error creating sandbag ${index + 1} at`, pos.x, pos.y, ':', sandbagError);
+                    // Continue with next sandbag instead of breaking the loop
                 }
             });
             
-            console.log(`Created ${allSandbagPositions.length} sandbags around crash site with multiple entrances`);
-            console.log('🛡️ Enhanced sandbag perimeter established with:');
-            console.log('   - Main northern entrance (narrowed but still accessible)');
-            console.log('   - Two southern entrances (96px each)');
-            console.log('   - Western entrance (120px wide)');
-            console.log('   - Eastern entrance (120px wide)');
-            console.log('   - Corner reinforcements for better coverage');
-            console.log('   - Inner defensive positions for layered defense');
-            console.log('   - Forward outposts for early warning');
+            console.log(`🛡️ Sandbag creation complete: ${successfulSandbags}/${allSandbagPositions.length} successful`);
+            
+            if (successfulSandbags === 0) {
+                console.error('❌ No sandbags were created successfully! Check the Sandbag class constructor.');
+            } else {
+                console.log(`✅ Created ${successfulSandbags} sandbags around crash site with multiple entrances`);
+                console.log('🛡️ Enhanced sandbag perimeter established with:');
+                console.log('   - Main northern entrance (narrowed but still accessible)');
+                console.log('   - Two southern entrances (96px each)');
+                console.log('   - Western entrance (120px wide)');
+                console.log('   - Eastern entrance (120px wide)');
+                console.log('   - Corner reinforcements for better coverage');
+                console.log('   - Inner defensive positions for layered defense');
+                console.log('   - Forward outposts for early warning');
+            }
             
         } catch (error) {
             console.error('Error creating crash site sandbags:', error);
+            console.error('❌ Falling back to no sandbags due to critical error');
         }
     }
     
@@ -1126,6 +1226,46 @@ export class GameScene extends Phaser.Scene {
                     // Barricade was destroyed - remove from list
                     if (barricade) {
                         console.log('🛡️ Removing destroyed barricade from barricadesList');
+                    }
+                    return false; // Remove from list
+                }
+            });
+        }
+        
+        // Update sandbags
+        if (this.sandbagsList) {
+            // Update active sandbags and remove destroyed ones
+            this.sandbagsList = this.sandbagsList.filter(sandbag => {
+                // Safety check: ensure sandbag is a valid object
+                if (!sandbag || typeof sandbag !== 'object') {
+                    console.warn('🛡️ Removing invalid sandbag object from sandbagsList');
+                    return false; // Remove invalid objects
+                }
+                
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    try {
+                        sandbag.update(time, delta);
+                        
+                        // Manual collision checking for damage (overlap-based)
+                        this.checkSandbagDamageCollisions(sandbag);
+                        
+                        return true; // Keep in list
+                    } catch (updateError) {
+                        console.error('❌ Error updating sandbag:', updateError);
+                        // Remove problematic sandbag from list
+                        if (sandbag && sandbag.destroy) {
+                            try {
+                                sandbag.destroy();
+                            } catch (destroyError) {
+                                console.error('❌ Error destroying problematic sandbag:', destroyError);
+                            }
+                        }
+                        return false; // Remove from list
+                    }
+                } else {
+                    // Sandbag was destroyed - remove from list
+                    if (sandbag) {
+                        console.log('🛡️ Removing destroyed sandbag from sandbagsList');
                     }
                     return false; // Remove from list
                 }
@@ -1640,7 +1780,6 @@ export class GameScene extends Phaser.Scene {
     
     handleZombieSpawning(time, delta) {
         if (!this.isWaveActive) {
-            console.log('Wave not active, skipping zombie spawn');
             return;
         }
         
@@ -1691,31 +1830,9 @@ export class GameScene extends Phaser.Scene {
             attempts++;
         } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < 10);
         
-        console.log('🧟 ZOMBIE SPAWN ATTEMPT:', {
-            side: ['Top', 'Right', 'Bottom', 'Left'][side],
-            spawnPos: { x: spawnX.toFixed(2), y: spawnY.toFixed(2) },
-            playerPos: { x: playerX.toFixed(2), y: playerY.toFixed(2) },
-            distanceFromPlayer: Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY).toFixed(2),
-            attempts
-        });
         
         const zombie = new Zombie(this, spawnX, spawnY);
         this.zombies.add(zombie);
-        
-        // Enhanced zombie debugging after creation
-        console.log('🟢 ZOMBIE CREATED:', {
-            position: { x: zombie.x.toFixed(2), y: zombie.y.toFixed(2) },
-            bodyCenter: { x: zombie.body.center.x.toFixed(2), y: zombie.body.center.y.toFixed(2) },
-            bodySize: { w: zombie.body.width, h: zombie.body.height },
-            bodyOffset: { x: zombie.body.offset.x.toFixed(2), y: zombie.body.offset.y.toFixed(2) },
-            scale: { x: zombie.scaleX.toFixed(3), y: zombie.scaleY.toFixed(3) },
-            texture: zombie.texture.key,
-            usingSheet: zombie.usingSheet,
-            health: zombie.health,
-            speed: zombie.speed.toFixed(1)
-        });
-        
-        console.log('Total zombies:', this.zombies.children.size);
         
         window.updateUI.zombiesLeft(this.zombiesInWave - this.zombies.children.size);
     }
@@ -2393,6 +2510,7 @@ export class GameScene extends Phaser.Scene {
             const squadCount = this.squadMembers ? this.squadMembers.children.size : 0;
             const sentryCount = this.sentryGunsList ? this.sentryGunsList.length : 0;
             const barricadeCount = this.barricadesList ? this.barricadesList.length : 0;
+            const sandbagCount = this.sandbagsList ? this.sandbagsList.length : 0;
             const currentEquipment = this.player ? this.player.getCurrentSlotEquipment() : null;
             const equipmentInfo = currentEquipment ? `${currentEquipment.name}${currentEquipment.count !== undefined ? ` (${currentEquipment.count})` : ''}` : 'None';
             
@@ -2401,6 +2519,7 @@ export class GameScene extends Phaser.Scene {
                 `Squad Members: ${squadCount}`,
                 `Sentry Guns: ${sentryCount}`,
                 `Barricades: ${barricadeCount}`,
+                `Sandbags: ${sandbagCount}`,
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
                 `Score: ${window.gameState.score || 0}`,
@@ -3955,6 +4074,167 @@ export class GameScene extends Phaser.Scene {
         // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
         
         console.log('💫 Bullet passed through barricade and continues traveling');
+    }
+
+    zombieHitSandbag(zombie, sandbag) {
+        // Comprehensive safety checks
+        if (!zombie || !sandbag || !zombie.active || !sandbag.active || !sandbag.isActive) {
+            console.warn('⚠️ zombieHitSandbag called with invalid objects:', {
+                zombie: !!zombie,
+                zombieActive: zombie ? zombie.active : false,
+                sandbag: !!sandbag,
+                sandbagActive: sandbag ? sandbag.active : false,
+                sandbagIsActive: sandbag ? sandbag.isActive : false
+            });
+            return;
+        }
+        
+        // Zombies can damage sandbags
+        if (sandbag && sandbag.active && sandbag.isActive) {
+            // Check if zombie can attack (cooldown)
+            const currentTime = this.time.now;
+            if (!zombie.lastSandbagAttackTime) zombie.lastSandbagAttackTime = 0;
+            
+            if (currentTime - zombie.lastSandbagAttackTime < 1500) {
+                return; // Attack cooldown - prevent spam (longer cooldown than barricades since sandbags are tougher)
+            }
+            
+            try {
+                const destroyed = sandbag.takeDamage(25, 'zombie'); // Good damage since sandbags have 4x health
+                zombie.lastSandbagAttackTime = currentTime;
+                
+                if (destroyed) {
+                    console.log('🛡️ Sandbag destroyed by zombie!');
+                    window.gameState.score -= 15; // Penalty for losing sandbag (more than barricades since they're stronger)
+                    window.updateUI.score(window.gameState.score);
+                }
+                
+                // Zombie briefly stops to attack
+                if (zombie.body) {
+                    zombie.body.setVelocity(0, 0);
+                }
+                
+                // Visual attack effect
+                const attackEffect = this.add.circle(sandbag.x, sandbag.y, 8, 0xff0000, 0.6);
+                attackEffect.setDepth(1500);
+                this.tweens.add({
+                    targets: attackEffect,
+                    scaleX: 2,
+                    scaleY: 2,
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Power2',
+                    onComplete: () => attackEffect.destroy()
+                });
+                
+                // Resume zombie movement after attack
+                this.time.delayedCall(1000, () => {
+                    if (zombie && zombie.body && zombie.active && this.player) {
+                        // Resume movement toward player
+                        const angle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+                        zombie.body.setVelocity(Math.cos(angle) * zombie.speed, Math.sin(angle) * zombie.speed);
+                    }
+                });
+            } catch (damageError) {
+                console.error('❌ Error in zombieHitSandbag damage calculation:', damageError);
+            }
+        }
+    }
+    
+    bulletHitSandbagFriendly(bullet, sandbag) {
+        // Safety check: ensure bullet is valid and has the deactivate method
+        if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
+            console.warn('⚠️ Invalid bullet in bulletHitSandbagFriendly:', {
+                bullet: bullet,
+                bulletType: typeof bullet,
+                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
+                bulletActive: bullet ? bullet.active : 'N/A'
+            });
+            return; // Skip processing invalid bullets
+        }
+        
+        // Safety check: ensure sandbag is valid
+        if (!sandbag || !sandbag.active || !sandbag.isActive) {
+            console.warn('⚠️ Invalid sandbag in bulletHitSandbagFriendly:', {
+                sandbag: !!sandbag,
+                sandbagActive: sandbag ? sandbag.active : false,
+                sandbagIsActive: sandbag ? sandbag.isActive : false
+            });
+            return; // Skip processing invalid sandbags
+        }
+        
+        // Sandbag friendly fire prevention - bullets pass through sandbags harmlessly
+        console.log('🛡️ Sandbag friendly fire prevented:', {
+            bulletPos: { x: bullet.x.toFixed(2), y: bullet.y.toFixed(2) },
+            sandbagPos: { x: sandbag.x.toFixed(2), y: sandbag.y.toFixed(2) }
+        });
+        
+        try {
+            // Create small sand/dust effects when bullet hits sandbag
+            const dustCount = 3; // Multiple small puffs
+            
+            for (let i = 0; i < dustCount; i++) {
+                // Random offset around the impact point
+                const offsetX = (Math.random() - 0.5) * 20;
+                const offsetY = (Math.random() - 0.5) * 15;
+                
+                let puff;
+                
+                if (this.textures.exists('smoke_puff')) {
+                    puff = this.add.image(sandbag.x + offsetX, sandbag.y + offsetY, 'smoke_puff');
+                    puff.setScale(0.025); // Very small sand puffs
+                } else {
+                    // Simple fallback - tiny sandy circle
+                    puff = this.add.circle(sandbag.x + offsetX, sandbag.y + offsetY, 1.5, 0xC2B280); // Sandy brown color
+                }
+                
+                puff.setDepth(sandbag.depth + 50);
+                puff.setAlpha(0.05);
+                
+                // Small upward drift with random spread
+                this.tweens.add({
+                    targets: puff,
+                    y: puff.y - Phaser.Math.Between(8, 15), // Small upward movement
+                    x: puff.x + Phaser.Math.Between(-8, 8), // Random horizontal drift
+                    scaleX: (puff.scaleX || 1) * 1.5, // Small expansion
+                    scaleY: (puff.scaleY || 1) * 1.5, // Small expansion
+                    alpha: 0,
+                    duration: Phaser.Math.Between(800, 1200), // Varying duration
+                    ease: 'Linear',
+                    onComplete: () => puff.destroy()
+                });
+            }
+        } catch (effectError) {
+            console.error('❌ Error creating sandbag bullet effect:', effectError);
+        }
+        
+        // DO NOT deactivate bullet - let it pass through sandbag
+        // bullet.deactivate(); // REMOVED - this was causing bullets to disappear
+        
+        console.log('💫 Bullet passed through sandbag and continues traveling');
+    }
+    
+    checkSandbagDamageCollisions(sandbag) {
+        // Safety check: ensure sandbag is valid
+        if (!sandbag || !sandbag.active || !sandbag.isActive || !sandbag.body) {
+            return; // Skip invalid sandbags
+        }
+        
+        // Check zombie collisions (for attacking the sandbag) - overlap only, not blocking
+        this.zombies.children.entries.forEach(zombie => {
+            if (zombie && zombie.active && zombie.body && sandbag.body) {
+                try {
+                    if (this.physics.overlap(zombie, sandbag)) {
+                        this.zombieHitSandbag(zombie, sandbag);
+                    }
+                } catch (overlapError) {
+                    console.error('❌ Error checking zombie-sandbag overlap:', overlapError);
+                }
+            }
+        });
+        
+        // Note: Friendly fire protection for sandbags is handled by bulletHitSandbagFriendly
+        // Zombie bullets can damage sandbags, but friendly bullets pass through harmlessly
     }
 }
 

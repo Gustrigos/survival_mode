@@ -1,10 +1,8 @@
 export class ZombieSpriteGenerator {
     static generateSprites(scene) {
-        console.log('Generating detailed top-down pixel art zombie sprites...');
         
         this.createZombieSprites(scene);
         
-        console.log('Detailed pixel art zombie sprites generated');
     }
     
     static createZombieSprites(scene) {
@@ -428,7 +426,6 @@ export class ZombieSpriteGenerator {
             graphics.generateTexture(`zombie_${direction}`, width, height);
             graphics.destroy();
             
-            console.log(`Detailed top-down zombie ${direction} sprite created`);
         });
     }
 } 
