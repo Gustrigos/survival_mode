@@ -171,12 +171,10 @@ export class NPCPlayer extends Player {
                     if (!this.isStuck) {
                         this.isStuck = true;
                         this.unstuckAttempts = 0;
-                        console.log(`${this.squadConfig.name} detected as stuck! Distance traveled: ${distanceTraveled.toFixed(1)}px`);
                     }
                 } else {
                     // Made good progress, no longer stuck
                     if (this.isStuck) {
-                        console.log(`${this.squadConfig.name} unstuck! Distance traveled: ${distanceTraveled.toFixed(1)}px`);
                     }
                     this.isStuck = false;
                     this.unstuckAttempts = 0;
@@ -193,16 +191,6 @@ export class NPCPlayer extends Player {
         // DEBUG: Log AI state every 2 seconds for this NPC
         if (!this.lastDebugTime) this.lastDebugTime = 0;
         if (this.debugEnabled && time - this.lastDebugTime > 2000) {
-            console.log(`🤖 ${this.squadConfig.name} AI DEBUG:`, {
-                distanceToLeader: distanceToLeader.toFixed(1),
-                position: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
-                leaderPos: this.scene.player ? { x: this.scene.player.x.toFixed(1), y: this.scene.player.y.toFixed(1) } : 'N/A',
-                hasTarget: !!this.target,
-                targetPos: this.target ? { x: this.target.x.toFixed(1), y: this.target.y.toFixed(1) } : 'N/A',
-                isRetreating: this.isRetreating,
-                isReloading: this.isReloading,
-                velocity: { x: this.body.velocity.x.toFixed(1), y: this.body.velocity.y.toFixed(1) }
-            });
             this.lastDebugTime = time;
         }
         
@@ -245,7 +233,6 @@ export class NPCPlayer extends Player {
             // Scan for zombie targets periodically
             if (time - this.lastTargetScanTime > this.targetScanInterval) {
                 if (this.debugEnabled) {
-                    console.log(`🔍 ${this.squadConfig.name} scanning for targets (close to leader: ${distanceToLeader.toFixed(1)})`);
                 }
                 this.scanForTargets();
                 this.lastTargetScanTime = time;
@@ -256,13 +243,11 @@ export class NPCPlayer extends Player {
                 // Double-check we're still close enough to leader before shooting
                 if (distanceToLeader <= this.squadConfig.maxSeparation * 0.6) {
                     if (this.debugEnabled) {
-                        console.log(`🎯 ${this.squadConfig.name} engaging target at distance ${distanceToLeader.toFixed(1)} from leader`);
                     }
                     this.aimAndShoot();
                 } else {
                     // Too far now, abandon target
                     if (this.debugEnabled) {
-                        console.log(`⚠️ ${this.squadConfig.name} became too far during combat (${distanceToLeader.toFixed(1)}) - abandoning target`);
                     }
                     this.target = null;
                     this.isFollowing = true;
@@ -271,7 +256,6 @@ export class NPCPlayer extends Player {
         } else {
             // Too far for combat, abandon any target and focus on following
             if (this.target) {
-                console.log(`❌ ${this.squadConfig.name} too far for combat (${distanceToLeader.toFixed(1)}) - abandoning target and following`);
             }
             this.target = null;
             this.isFollowing = true;
@@ -282,7 +266,6 @@ export class NPCPlayer extends Player {
             const ammoPercentage = this.ammo / this.maxAmmo;
             if (ammoPercentage <= 0.2 && !this.target) {
                 if (this.debugEnabled) {
-                    console.log(`🔄 ${this.squadConfig.name} reloading (${this.ammo}/${this.maxAmmo} ammo)`);
                 }
                 this.reload();
             }
@@ -315,13 +298,6 @@ export class NPCPlayer extends Player {
         
         // DEBUG: Log target scanning results
         if (this.debugEnabled) {
-            console.log(`🎯 ${this.squadConfig.name} TARGET SCAN:`, {
-                zombiesInRange: zombiesInRange.length,
-                aggroRange: this.squadConfig.aggroRange,
-                closestDistance: closestDistance.toFixed(1),
-                hasClosestZombie: !!closestZombie,
-                previousTarget: this.target ? 'had target' : 'no target'
-            });
         }
         
         // Update target
@@ -329,12 +305,10 @@ export class NPCPlayer extends Player {
             this.target = closestZombie;
             this.isFollowing = false; // Stop following when engaging
             if (this.debugEnabled) {
-                console.log(`🎯 ${this.squadConfig.name} acquired target at distance ${closestDistance.toFixed(1)}`);
             }
         } else if (this.target) {
             // Only update behavior if we previously had a target
             if (this.debugEnabled) {
-                console.log(`🎯 ${this.squadConfig.name} lost target - no zombies in range`);
             }
             this.target = null;
             // Don't automatically set isFollowing = true here
@@ -354,18 +328,11 @@ export class NPCPlayer extends Player {
         
         // DEBUG: Log aiming details
         if (this.debugEnabled) {
-            console.log(`🎯 ${this.squadConfig.name} AIM & SHOOT:`, {
-                targetDistance: distanceToTarget.toFixed(1),
-                leaderDistance: distanceToLeader.toFixed(1),
-                targetPos: { x: this.target.x.toFixed(1), y: this.target.y.toFixed(1) },
-                myPos: { x: this.x.toFixed(1), y: this.y.toFixed(1) }
-            });
         }
         
         // Check line of sight before shooting to prevent friendly fire
         if (!this.scene.checkLineOfSight(this, this.target)) {
             if (this.debugEnabled) {
-                console.log(`🚫 ${this.squadConfig.name} line of sight blocked - repositioning`);
             }
             
             // Try to find a better shooting position
@@ -405,7 +372,6 @@ export class NPCPlayer extends Player {
         // Shoot if we have a clear shot and are facing the right direction
         if (distanceToTarget <= this.squadConfig.aggroRange) {
             if (this.debugEnabled) {
-                console.log(`💥 ${this.squadConfig.name} SHOOTING at target (facing ${direction})`);
             }
             this.shoot();
         }
@@ -420,12 +386,10 @@ export class NPCPlayer extends Player {
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
         if (this.debugEnabled) {
-            console.log(`🔄 ${this.squadConfig.name} repositioning for clear shot - distance to leader: ${currentDistanceToLeader.toFixed(1)}`);
         }
         
         if (currentDistanceToLeader > this.squadConfig.maxSeparation * 0.9) {
             if (this.debugEnabled) {
-                console.log(`🚫 ${this.squadConfig.name} too far from leader (${currentDistanceToLeader.toFixed(1)} > ${(this.squadConfig.maxSeparation * 0.9).toFixed(1)}), abandoning target to return to formation`);
             }
             this.target = null;
             return;
@@ -436,7 +400,6 @@ export class NPCPlayer extends Player {
         const repositionDistance = 40; // Reduced from 60 to stay closer
         
         if (this.debugEnabled) {
-            console.log(`🎯 ${this.squadConfig.name} trying to reposition around target at distance ${repositionDistance}`);
         }
         
         // Try multiple angles around the current position to find a clear shot
@@ -452,7 +415,6 @@ export class NPCPlayer extends Player {
             const testY = this.y + Math.sin(angle) * repositionDistance;
             
             if (this.debugEnabled) {
-                console.log(`🧪 ${this.squadConfig.name} testing reposition to (${testX.toFixed(1)}, ${testY.toFixed(1)})`);
             }
             
             // Check if this position would give a clear shot
@@ -464,7 +426,6 @@ export class NPCPlayer extends Player {
                 const distanceToLeader = Phaser.Math.Distance.Between(testX, testY, this.scene.player.x, this.scene.player.y);
                 
                 if (this.debugEnabled) {
-                    console.log(`✅ ${this.squadConfig.name} found clear shot position - would be ${distanceToLeader.toFixed(1)} from leader`);
                 }
                 
                 if (distanceToLeader <= this.squadConfig.maxSeparation * 0.8) { // Use 80% for safety
@@ -484,24 +445,20 @@ export class NPCPlayer extends Player {
                     
                     const degrees = Phaser.Math.RadToDeg(moveAngle);
                     if (this.debugEnabled) {
-                        console.log(`➡️ ${this.squadConfig.name} repositioning for clear shot at angle ${degrees.toFixed(0)}° (velocity: ${velocityX.toFixed(1)}, ${velocityY.toFixed(1)})`);
                     }
                     return; // Found a good position, stop looking
                 } else {
                     if (this.debugEnabled) {
-                        console.log(`❌ ${this.squadConfig.name} reposition would be too far from leader (${distanceToLeader.toFixed(1)})`);
                     }
                 }
             } else {
                 if (this.debugEnabled) {
-                    console.log(`❌ ${this.squadConfig.name} no clear shot from test position`);
                 }
             }
         }
         
         // If no good repositioning angle found, abandon target instead of backing up unsafely
         if (this.debugEnabled) {
-            console.log(`🚫 ${this.squadConfig.name} no safe repositioning found, abandoning target`);
         }
         this.target = null;
     }
@@ -541,16 +498,7 @@ export class NPCPlayer extends Player {
         
         // DEBUG: Log follow behavior details
         if (this.debugEnabled) {
-            console.log(`🚶 ${this.squadConfig.name} FOLLOW DEBUG:`, {
-                currentPos: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
-                desiredPos: { x: desiredX.toFixed(1), y: desiredY.toFixed(1) },
-                formationOffset: this.squadConfig.formationOffset,
-                spacing: { x: spacing.x.toFixed(1), y: spacing.y.toFixed(1) },
-                distanceToDesired: distanceToDesired.toFixed(1),
-                distanceToLeader: distanceToLeader.toFixed(1),
-                squadMode: this.squadMode,
-                isRetreating: this.isRetreating
-            });
+
         }
         
         // Define behavior thresholds
@@ -564,7 +512,6 @@ export class NPCPlayer extends Player {
                            distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow/move mode only
         
         if (this.debugEnabled) {
-            console.log(`🤔 ${this.squadConfig.name} should follow: ${shouldFollow} (deadZone: ${deadZone}, followThreshold: ${followThreshold})`);
         }
         
         // Only move if outside the dead zone AND should follow
@@ -590,7 +537,6 @@ export class NPCPlayer extends Player {
             const velocityY = moveVector.y * (speed / 120);
             
             if (this.debugEnabled) {
-                console.log(`🏃 ${this.squadConfig.name} MOVING to desired position - speed: ${speed}, velocity: (${velocityX.toFixed(1)}, ${velocityY.toFixed(1)}), moveVector: (${moveVector.x.toFixed(1)}, ${moveVector.y.toFixed(1)})`);
             }
             
             this.setVelocity(velocityX, velocityY);
@@ -607,7 +553,6 @@ export class NPCPlayer extends Player {
         } else {
             // Stop moving when in dead zone or when close enough
             if (this.debugEnabled) {
-                console.log(`🛑 ${this.squadConfig.name} STOPPING - in dead zone or shouldn't follow`);
             }
             this.setVelocity(0, 0);
             this.setMoving(false);
@@ -690,7 +635,6 @@ export class NPCPlayer extends Player {
                 return this.currentPathDirection;
             } else {
                 // Path is now blocked, need to choose a new one
-                console.log(`${this.squadConfig.name} current path blocked, choosing new path`);
                 this.currentPathDirection = null;
             }
         }
@@ -704,7 +648,6 @@ export class NPCPlayer extends Player {
         // NEW: Special handling – if a sandbag is directly blocking path, go to entrance immediately
         if (obstacleAhead && obstacleAhead.structureType === 'sandbags') {
             if (this.debugEnabled) {
-                console.log(`🧱 ${this.squadConfig.name} sandbag wall ahead – seeking entrance`);
             }
             return this.getObstacleAvoidanceVector(targetX, targetY);
         }
@@ -842,7 +785,6 @@ export class NPCPlayer extends Player {
                 // Only update the index if we're trying a new direction
                 if (i > 0) {
                     this.alternatePathIndex = angleIndex;
-                    console.log(`${this.squadConfig.name} choosing alternate path: ${Phaser.Math.RadToDeg(testAngle).toFixed(0)}°`);
                 }
                 return { x: testVelX, y: testVelY };
             }
@@ -1320,7 +1262,6 @@ export class NPCPlayer extends Player {
             this.updateDirectionFromMovement(moveAngle);
             this.setMoving(true);
             
-            console.log(`${this.squadConfig.name} repositioning to avoid blocking player`);
         }
     }
     
@@ -1433,7 +1374,6 @@ export class NPCPlayer extends Player {
                 this.holdPosition = { x: this.pingLocation.x, y: this.pingLocation.y };
                 this.pingLocation = null;
                 this.isExecutingPing = false;
-                console.log(`✅ ${this.squadConfig.name} reached move destination, converting to hold position`);
             }
         }
         
@@ -1581,7 +1521,6 @@ export class NPCPlayer extends Player {
     
     performUnstuckManeuver(targetX, targetY, currentTime) {
         this.unstuckAttempts++;
-        console.log(`${this.squadConfig.name} performing unstuck maneuver #${this.unstuckAttempts}`);
         
         // Try different unstuck strategies based on attempt number
         switch (this.unstuckAttempts) {
@@ -1665,7 +1604,7 @@ export class NPCPlayer extends Player {
             
             // If moving away would take us too far, try moving toward leader instead
             if (distanceToLeader > this.squadConfig.maxSeparation * 0.8) {
-                console.log(`${this.squadConfig.name} obstacle avoidance would go too far, moving toward leader instead`);
+
                 return this.getDirectPathToTarget(this.scene.player.x, this.scene.player.y);
             }
             
@@ -1715,7 +1654,6 @@ export class NPCPlayer extends Player {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance > 0) {
-                    console.log(`${this.squadConfig.name} heading to safe entrance at (${validEntrance.x}, ${validEntrance.y})`);
                     return {
                         x: (dx / distance) * 120,
                         y: (dy / distance) * 120
@@ -1729,7 +1667,6 @@ export class NPCPlayer extends Player {
     
     moveInRandomDirection() {
         const randomAngle = Math.random() * Math.PI * 2;
-        console.log(`${this.squadConfig.name} moving in random direction: ${Phaser.Math.RadToDeg(randomAngle).toFixed(0)}°`);
         return {
             x: Math.cos(randomAngle) * 120,
             y: Math.sin(randomAngle) * 120
@@ -1833,12 +1770,10 @@ export class NPCPlayer extends Player {
     // DEBUG CONTROLS - Use these methods to control debug output
     enableDebug() {
         this.debugEnabled = true;
-        console.log(`🔧 Debug enabled for ${this.squadConfig.name}`);
     }
     
     disableDebug() {
         this.debugEnabled = false;
-        console.log(`🔧 Debug disabled for ${this.squadConfig.name}`);
     }
     
     // Static method to enable/disable debug for all NPCs
@@ -1849,7 +1784,6 @@ export class NPCPlayer extends Player {
                     npc.debugEnabled = enabled;
                 }
             });
-            console.log(`🔧 Debug ${enabled ? 'enabled' : 'disabled'} for all NPCs`);
         }
     }
     
@@ -1868,7 +1802,6 @@ export class NPCPlayer extends Player {
             this.noLeaderProgressCounter++;
             if (this.noLeaderProgressCounter >= 2) { // ≥2 s of no progress
                 if (!this.isStuck && this.debugEnabled) {
-                    console.log(`⛔ ${this.squadConfig.name} no progress toward leader for ${this.noLeaderProgressCounter} s – flagging stuck`);
                 }
                 this.isStuck = true;
             }
@@ -1876,7 +1809,6 @@ export class NPCPlayer extends Player {
             // Making progress → reset
             this.noLeaderProgressCounter = 0;
             if (this.isStuck && this.debugEnabled) {
-                console.log(`✅ ${this.squadConfig.name} progress toward leader resumed – clearing stuck flag`);
             }
             this.isStuck = false;
         }
