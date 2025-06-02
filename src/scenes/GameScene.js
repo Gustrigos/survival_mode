@@ -10,6 +10,7 @@ import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
 import { SpriteScaler } from '../utils/SpriteScaler.js';
+import { GameConfig } from '../utils/GameConfig.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -18,6 +19,7 @@ export class GameScene extends Phaser.Scene {
 
     preload() {
         console.log('GameScene preload() called');
+        console.log('🎮 Using difficulty:', GameConfig.currentDifficulty.toUpperCase());
         
         // Load sprites (this queues them for loading)
         try {
@@ -96,15 +98,15 @@ export class GameScene extends Phaser.Scene {
         // Optimize terrain textures for better performance and visual quality
         try {
             TerrainOptimizer.optimizeTextures(this, {
-                targetTileSize: 64,
+                targetTileSize: GameConfig.performance.terrainTileSize,
                 useNearestFilter: true,
                 compressLargeTextures: true
             });
             
-            // OPTIONAL: Generate seamless terrain textures without transparent borders
-            // Uncomment the line below to use programmatically generated terrain instead of sprites
-            // TerrainOptimizer.createSeamlessTerrainTextures(this);
-            // Or just roads: TerrainOptimizer.createSeamlessRoadTextures(this);
+            // Optional seamless terrain based on config
+            if (GameConfig.performance.useSeamlessTextures) {
+                TerrainOptimizer.createSeamlessTerrainTextures(this);
+            }
             
         } catch (error) {
             console.warn('Terrain optimization failed:', error);
@@ -124,15 +126,15 @@ export class GameScene extends Phaser.Scene {
             console.error('✗ Crashed helicopter texture missing!');
         }
         
-        // Expand world bounds for larger crash site area
-        const worldWidth = 2048;
-        const worldHeight = 1536;
+        // Expand world bounds using config values
+        const worldWidth = GameConfig.world.width;
+        const worldHeight = GameConfig.world.height;
         this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
         
         // Create groups first
         this.bullets = this.physics.add.group({
             classType: Bullet,
-            maxSize: 50,
+            maxSize: GameConfig.performance.bulletPoolSize,
             runChildUpdate: true
         });
         
@@ -247,7 +249,7 @@ export class GameScene extends Phaser.Scene {
         // Create main player name tag
         this.createMainPlayerNameTag();
         
-        // Create squad members
+        // Create squad members using config
         this.createSquad();
         
         // === SQUAD COMMAND SYSTEM ===
@@ -300,11 +302,12 @@ export class GameScene extends Phaser.Scene {
         // Set up collisions
         this.setupCollisions();
         
-        // Game state
-        this.zombiesInWave = 25; // Changed from 5 to 25 for more intense first wave
+        // Game state - use config values
+        const waveSettings = GameConfig.getWaveSettings();
+        this.zombiesInWave = waveSettings.zombiesFirstWave;
         this.zombiesSpawned = 0;
         this.zombieSpawnTimer = 0;
-        this.waveStartDelay = 3000;
+        this.waveStartDelay = waveSettings.waveStartDelay;
         this.nextWaveTimer = 0;
         this.isWaveActive = false;
         
@@ -376,8 +379,8 @@ export class GameScene extends Phaser.Scene {
             this.physics.world.debugGraphic.setDepth(1500);
         }
 
-        // Track visibility state
-        this.showDebugBodies = true;
+        // Track visibility state - use config setting
+        this.showDebugBodies = GameConfig.ui.showHitboxes;
         if (this.physics.world.debugGraphic) {
             this.physics.world.debugGraphic.visible = this.showDebugBodies;
         }
@@ -471,11 +474,11 @@ export class GameScene extends Phaser.Scene {
     }
     
     createTerrain() {
-        // Terrain Configuration - Easy to adjust for different sizes and performance
+        // Terrain Configuration - Use config values
         const terrainConfig = {
-            tileSize: 64,           // Display size of each terrain tile
-            worldWidth: 2048,       // Total world width
-            worldHeight: 1536,      // Total world height
+            tileSize: GameConfig.world.tileSize,
+            worldWidth: GameConfig.world.width,
+            worldHeight: GameConfig.world.height,
             useNearestFilter: true, // Use pixel-perfect scaling (good for pixel art)
             
             // Terrain type definitions with optimal settings
@@ -564,21 +567,10 @@ export class GameScene extends Phaser.Scene {
                         tile.setRotation(rotation);
                     }
                     
-                    // Debug specific terrain types
-                    if (terrainType === 'dirt_road') {
-                        const direction = rotation === 0 ? 'vertical' : 'horizontal';
-                    }
-                    if (terrainType === 'sand_texture') {
-                    }
-                    
                     // Handle sprite sizing - ALL terrain sprites need to be larger to eliminate gaps
                     // Most sprite files have transparent borders, so we oversize them to ensure seamless tiling
                     const oversizeMultiplier = 1.25; // 25% larger to cover transparent borders
                     tile.setDisplaySize(tileSize * oversizeMultiplier, tileSize * oversizeMultiplier);
-                    
-                    if (terrainType === 'dirt_road') {
-                    } else {
-                    }
                     
                     // Apply filtering based on configuration
                     if (useNearestFilter) {
@@ -597,14 +589,6 @@ export class GameScene extends Phaser.Scene {
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
                     
-                    // Debug specific failures
-                    if (terrainType === 'dirt_road') {
-
-                    }
-                    if (terrainType === 'sand_texture') {
-    
-                    }
-                    
                     // Create fallback colored rectangles
                     let color = 0xF4E4BC; // Default sand color
                     if (terrainType === 'rubble') color = 0x8B7355; // Brown rubble
@@ -617,7 +601,6 @@ export class GameScene extends Phaser.Scene {
                 tile.setDepth(-10);
             }
         }
-        
     }
     
     createCrashSiteStructures() {
@@ -1712,13 +1695,14 @@ export class GameScene extends Phaser.Scene {
         
         this.zombieSpawnTimer += delta;
         
-        if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > 500) { // Changed from 2000 to 500 for faster spawning
+        // Use config spawn delay
+        const waveSettings = GameConfig.getWaveSettings();
+        if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > waveSettings.zombieSpawnDelay) {
             this.spawnZombie();
             this.zombieSpawnTimer = 0;
             this.zombiesSpawned++;
         } else if (this.zombiesSpawned < this.zombiesInWave) {
             // Still waiting to spawn
-
         }
     }
     
@@ -1726,13 +1710,13 @@ export class GameScene extends Phaser.Scene {
         // Spawn zombie near the edges of the world, but not too close to player
         const playerX = this.player.x;
         const playerY = this.player.y;
-        const worldWidth = 2048;
-        const worldHeight = 1536;
+        const worldWidth = GameConfig.world.width;
+        const worldHeight = GameConfig.world.height;
         
         let spawnX, spawnY;
         const side = Phaser.Math.Between(0, 3);
-        const margin = 150; // Distance from edge
-        const minDistanceFromPlayer = 300; // Minimum distance from player
+        const margin = GameConfig.spawning.zombieSpawnMargin;
+        const minDistanceFromPlayer = GameConfig.spawning.zombieSpawnDistance;
         
         let attempts = 0;
         do {
@@ -1755,7 +1739,7 @@ export class GameScene extends Phaser.Scene {
                     break;
             }
             attempts++;
-        } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < 10);
+        } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < GameConfig.spawning.maxSpawnAttempts);
         
         
         const zombie = new Zombie(this, spawnX, spawnY);
@@ -2182,11 +2166,15 @@ export class GameScene extends Phaser.Scene {
             window.gameState.wave++;
         }
         
-        // Set zombies per wave - first wave has 25, then increases from there
+        // Set zombies per wave using config
+        const waveSettings = GameConfig.getWaveSettings();
         if (window.gameState.wave === 1) {
-            this.zombiesInWave = 25; // Intense first wave
+            this.zombiesInWave = waveSettings.zombiesFirstWave;
         } else {
-            this.zombiesInWave = 25 + (window.gameState.wave - 1) * 3; // Increase by 3 each wave after first
+            this.zombiesInWave = Math.min(
+                waveSettings.zombiesFirstWave + (window.gameState.wave - 1) * waveSettings.zombiesWaveIncrement,
+                waveSettings.maxZombiesPerWave
+            );
         }
         
         this.zombiesSpawned = 0;
@@ -2675,62 +2663,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     createSquad() {
-        // Create NPC squad members with different configurations
+        // Create NPC squad members using config
+        const squadConfig = GameConfig.getSquadConfig();
         
-        // Squad member configurations
-        const squadConfigs = [
-            // Front flankers - advance scouts
-            {
-                name: 'Charlie',
-                color: 0x0099ff, // Blue
-                formationOffset: { x: -60, y: -20 }, // Front-left flanker
-                weapon: 'pistol',
-                aggroRange: 280,
-                followDistance: 60,
-                maxSeparation: 220
-            },
-            {
-                name: 'Delta', 
-                color: 0xff3333, // Red
-                formationOffset: { x: 60, y: -20 }, // Front-right flanker
-                weapon: 'machineGun',
-                aggroRange: 320,
-                followDistance: 60,
-                maxSeparation: 220
-            },
-            // Mid-line support (original positions)
-            {
-                name: 'Alpha',
-                color: 0x00ff00, // Green
-                formationOffset: { x: -50, y: 40 }, // Left-back formation
-                weapon: 'pistol',
-                aggroRange: 250,
-                followDistance: 60,
-                maxSeparation: 200
-            },
-            {
-                name: 'Bravo',
-                color: 0xff8800, // Orange
-                formationOffset: { x: 50, y: 40 }, // Right-back formation
-                weapon: 'machineGun',
-                aggroRange: 300,
-                followDistance: 60,
-                maxSeparation: 200
-            },
-            // // Rear guard - overwatch
-            // {
-            //     name: 'Echo',
-            //     color: 0xaa44ff, // Purple
-            //     formationOffset: { x: 0, y: 60 }, // Direct rear guard
-            //     weapon: 'pistol',
-            //     aggroRange: 270,
-            //     followDistance: 65,
-            //     maxSeparation: 210
-            // }
-        ];
+        console.log(`🎖️ Creating squad with ${squadConfig.size} members (difficulty: ${GameConfig.currentDifficulty})`);
         
-        // Create each squad member
-        squadConfigs.forEach((config, index) => {
+        // Create each squad member based on config
+        for (let i = 0; i < squadConfig.size; i++) {
+            const config = squadConfig.members[i];
+            if (!config) break; // No more configurations available
+            
             try {
                 // Start squad members near the main player
                 const startX = this.player.x + config.formationOffset.x;
@@ -2739,11 +2681,13 @@ export class GameScene extends Phaser.Scene {
                 const squadMember = new NPCPlayer(this, startX, startY, config);
                 this.squadMembers.add(squadMember);
                 
+                console.log(`✅ Created squad member: ${config.name}`);
             } catch (error) {
                 console.error(`Error creating squad member '${config.name}':`, error);
             }
-        });
+        }
         
+        console.log(`🎖️ Squad creation complete: ${this.squadMembers.children.size}/${squadConfig.size} members active`);
     }
 
     updateHTMLSquadStatus() {

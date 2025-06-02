@@ -1,4 +1,5 @@
 import { ZombieSpriteManager } from '../utils/ZombieSpriteManager.js';
+import { GameConfig } from '../utils/GameConfig.js';
 
 export class Zombie extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
@@ -11,34 +12,49 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         scene.add.existing(this);
         scene.physics.add.existing(this);
         
-        // Zombie properties
-        this.scene = scene;
-        this.health = 75;
-        this.maxHealth = 75;
-        this.speed = 80 + Math.random() * 40; // Random speed variation
-        this.damage = 20;
+        // Get zombie stats from config (includes difficulty modifiers)
+        const zombieStats = GameConfig.getZombieStats();
         
-        // AI properties
+        // Zombie properties - use config values
+        this.scene = scene;
+        this.health = zombieStats.health;
+        this.maxHealth = zombieStats.health;
+        this.speed = zombieStats.speed + Math.random() * zombieStats.speedVariation - zombieStats.speedVariation/2; // Random speed variation
+        this.damage = zombieStats.damage;
+        
+        // AI properties - use config values
         this.direction = 'down';
         this.lastDirectionChange = 0;
-        this.directionChangeInterval = 2000; // Change direction every 2 seconds
-        this.attackCooldown = 1000; // 1 second between attacks
+        this.directionChangeInterval = zombieStats.directionChangeInterval;
+        this.attackCooldown = zombieStats.attackCooldown;
         this.lastAttackTime = 0;
         
-        // Barricade attack properties
+        // Barricade attack properties - use config values
         this.targetBarricade = null; // Barricade the zombie is trying to destroy
         this.lastBarricadeAttackTime = 0;
-        this.barricadeAttackCooldown = 1200; // 1.2 seconds between barricade attacks
-        this.barricadeAttackRange = 45; // Range to attack barricades
+        this.barricadeAttackCooldown = zombieStats.barricadeAttackCooldown;
+        this.barricadeAttackRange = zombieStats.barricadeAttackRange;
+        this.barricadeAttackDamage = zombieStats.barricadeAttackDamage;
         
-        // Knockback properties
+        // Sandbag attack properties - use config values
+        this.lastSandbagAttackTime = 0;
+        this.sandbagAttackCooldown = zombieStats.sandbagAttackCooldown;
+        this.sandbagAttackRange = zombieStats.sandbagAttackRange;
+        this.sandbagAttackDamage = zombieStats.sandbagAttackDamage;
+        
+        // Knockback properties - use config values
         this.isKnockedBack = false;
         this.knockbackEndTime = 0;
+        this.knockbackResistance = zombieStats.knockbackResistance;
         
         // Animation
         this.walkAnimSpeed = 600; // Slower than player
         this.lastAnimTime = 0;
         this.animFrame = 0;
+        
+        // Movement behavior - use config values
+        this.randomMovementForce = zombieStats.randomMovementForce;
+        this.aggroRange = zombieStats.aggroRange;
         
         // Set up physics body - make it cover the full visible sprite, same as player
         this.setCollideWorldBounds(true);
@@ -83,6 +99,7 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Set initial texture
         this.setTexture(textureKey);
 
+        console.log(`🧟 Zombie created with stats: Health=${this.health}, Speed=${this.speed.toFixed(1)}, Damage=${this.damage} (Difficulty: ${GameConfig.currentDifficulty})`);
     }
     
     update(time, delta) {
@@ -391,9 +408,9 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     }
     
     addRandomMovement() {
-        // Add some random movement to make zombies less predictable
+        // Add some random movement to make zombies less predictable - use config value
         const randomAngle = Math.random() * Math.PI * 2;
-        const randomForce = 30;
+        const randomForce = this.randomMovementForce;
         
         this.body.velocity.x += Math.cos(randomAngle) * randomForce;
         this.body.velocity.y += Math.sin(randomAngle) * randomForce;
@@ -560,14 +577,17 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         });
     }
     
-    // Apply knockback effect (called when hit by bullets)
+    // Apply knockback effect (called when hit by bullets) - use config resistance
     applyKnockback(sourceX, sourceY, force = 180, duration = 400) {
         if (this.isKnockedBack) return; // Already being knocked back
         
+        // Apply knockback resistance from config
+        const effectiveForce = force * (1 - this.knockbackResistance);
+        
         // Calculate knockback direction away from source
         const angle = Phaser.Math.Angle.Between(sourceX, sourceY, this.x, this.y);
-        const velocityX = Math.cos(angle) * force;
-        const velocityY = Math.sin(angle) * force;
+        const velocityX = Math.cos(angle) * effectiveForce;
+        const velocityY = Math.sin(angle) * effectiveForce;
         
         // Apply knockback
         this.setVelocity(velocityX, velocityY);
@@ -610,12 +630,11 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Attack the barricade
         this.lastBarricadeAttackTime = currentTime;
         
-        // ACTUALLY DAMAGE THE BARRICADE
-        const destroyed = this.targetBarricade.takeDamage(20, 'zombie'); // 20 damage per zombie attack
+        // ACTUALLY DAMAGE THE BARRICADE - use config damage value
+        const destroyed = this.targetBarricade.takeDamage(this.barricadeAttackDamage, 'zombie');
         
         if (destroyed) {
             this.targetBarricade = null; // Clear target since it's destroyed
-        } else {
         }
         
         // Visual attack effect on zombie
