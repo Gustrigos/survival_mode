@@ -1572,12 +1572,20 @@ export class GameScene extends Phaser.Scene {
     
     placeBarricade() {
         try {
+            console.log('🛡️ === BARRICADE PLACEMENT DEBUG START ===');
             console.log('🛡️ Attempting to place barricade...');
             
             // Check if player has barricade in current slot
             const equipment = this.player.getCurrentSlotEquipment();
+            console.log('🛡️ Equipment check:', {
+                equipment: equipment,
+                type: equipment ? equipment.type : 'none',
+                id: equipment ? equipment.id : 'none',
+                count: equipment ? equipment.count : 'none'
+            });
+            
             if (!equipment || equipment.type !== 'placeable' || equipment.id !== 'barricade' || equipment.count <= 0) {
-                console.log('No barricade available in current slot');
+                console.log('🛡️ No barricade available in current slot');
                 return;
             }
             
@@ -1608,7 +1616,17 @@ export class GameScene extends Phaser.Scene {
             console.log('🛡️ Placement validation passed, creating barricade...');
             
             // Hide placement preview before creating actual item
+            console.log('🛡️ Preview state before destroy:', {
+                isShowingPreview: this.isShowingPreview,
+                currentPreviewType: this.currentPreviewType,
+                previewExists: !!this.placementPreview
+            });
             this.destroyPlacementPreview();
+            console.log('🛡️ Preview destroyed, state now:', {
+                isShowingPreview: this.isShowingPreview,
+                currentPreviewType: this.currentPreviewType,
+                previewExists: !!this.placementPreview
+            });
             
             // Create barricade
             const barricade = new Barricade(this, placeX, placeY);
@@ -1649,7 +1667,30 @@ export class GameScene extends Phaser.Scene {
             }
             
             // Use item from equipment
+            console.log('🛡️ Equipment before usePlaceableItem:', {
+                count: equipment.count,
+                type: equipment.type,
+                id: equipment.id
+            });
             this.player.usePlaceableItem();
+            
+            // Check equipment after using item
+            const equipmentAfter = this.player.getCurrentSlotEquipment();
+            console.log('🛡️ Equipment after usePlaceableItem:', {
+                equipment: equipmentAfter,
+                count: equipmentAfter ? equipmentAfter.count : 'none',
+                type: equipmentAfter ? equipmentAfter.type : 'none',
+                id: equipmentAfter ? equipmentAfter.id : 'none'
+            });
+            
+            // Check if we should show preview again (if player still has more items)
+            console.log('🛡️ About to call handleEquipmentChange...');
+            this.handleEquipmentChange();
+            console.log('🛡️ handleEquipmentChange called, preview state now:', {
+                isShowingPreview: this.isShowingPreview,
+                currentPreviewType: this.currentPreviewType,
+                previewExists: !!this.placementPreview
+            });
             
             // Visual feedback for successful placement
             const successMarker = this.add.circle(placeX, placeY, 35, 0x00FF00, 0.5);
@@ -1664,10 +1705,12 @@ export class GameScene extends Phaser.Scene {
             });
             
             console.log(`✅ Barricade placed successfully at (${placeX.toFixed(0)}, ${placeY.toFixed(0)})`);
+            console.log('🛡️ === BARRICADE PLACEMENT DEBUG END ===');
             
         } catch (error) {
             console.error('❌ Critical error in placeBarricade:', error);
             console.error('Stack trace:', error.stack);
+            console.log('🛡️ === BARRICADE PLACEMENT DEBUG END (ERROR) ===');
         }
     }
     
@@ -1794,12 +1837,6 @@ export class GameScene extends Phaser.Scene {
     bulletHitFriendly(bullet, unit) {
         // Safety check: ensure bullet is valid and has the deactivate method
         if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
-            console.warn('⚠️ Invalid bullet in bulletHitFriendly:', {
-                bullet: bullet,
-                bulletType: typeof bullet,
-                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
-                bulletActive: bullet ? bullet.active : 'N/A'
-            });
             return; // Skip processing invalid bullets
         }
         
@@ -1833,12 +1870,6 @@ export class GameScene extends Phaser.Scene {
     bulletHitStructureFriendly(bullet, structure) {
         // Safety check: ensure bullet is valid and has the deactivate method
         if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
-            console.warn('⚠️ Invalid bullet in bulletHitStructureFriendly:', {
-                bullet: bullet,
-                bulletType: typeof bullet,
-                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
-                bulletActive: bullet ? bullet.active : 'N/A'
-            });
             return; // Skip processing invalid bullets
         }
         
@@ -3694,12 +3725,6 @@ export class GameScene extends Phaser.Scene {
     bulletHitSentryGunFriendly(bullet, sentryGun) {
         // Safety check: ensure bullet is valid and has the deactivate method
         if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
-            console.warn('⚠️ Invalid bullet in bulletHitSentryGunFriendly:', {
-                bullet: bullet,
-                bulletType: typeof bullet,
-                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
-                bulletActive: bullet ? bullet.active : 'N/A'
-            });
             return; // Skip processing invalid bullets
         }
         
@@ -3900,12 +3925,6 @@ export class GameScene extends Phaser.Scene {
     bulletHitBarricadeFriendly(bullet, barricade) {
         // Safety check: ensure bullet is valid and has the deactivate method
         if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
-            console.warn('⚠️ Invalid bullet in bulletHitBarricadeFriendly:', {
-                bullet: bullet,
-                bulletType: typeof bullet,
-                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
-                bulletActive: bullet ? bullet.active : 'N/A'
-            });
             return; // Skip processing invalid bullets
         }
         
@@ -4021,12 +4040,6 @@ export class GameScene extends Phaser.Scene {
     bulletHitSandbagFriendly(bullet, sandbag) {
         // Safety check: ensure bullet is valid and has the deactivate method
         if (!bullet || !bullet.active || typeof bullet.deactivate !== 'function') {
-            console.warn('⚠️ Invalid bullet in bulletHitSandbagFriendly:', {
-                bullet: bullet,
-                bulletType: typeof bullet,
-                hasDeactivate: bullet ? (typeof bullet.deactivate) : 'N/A',
-                bulletActive: bullet ? bullet.active : 'N/A'
-            });
             return; // Skip processing invalid bullets
         }
         
@@ -4117,8 +4130,21 @@ export class GameScene extends Phaser.Scene {
     // === PLACEMENT PREVIEW SYSTEM ===
     
     createPlacementPreview(equipmentId) {
+        console.log('🔨 === CREATE PLACEMENT PREVIEW DEBUG START ===');
+        console.log('🔨 Creating preview for:', equipmentId);
+        
         // Clean up any existing preview
+        console.log('🔨 Existing preview state before cleanup:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview
+        });
         this.destroyPlacementPreview();
+        console.log('🔨 State after cleanup:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview
+        });
         
         let textureKey = '';
         let useCustomSizing = false;
@@ -4129,58 +4155,81 @@ export class GameScene extends Phaser.Scene {
             case 'sentryGun':
                 textureKey = 'sentry_gun_right';
                 useCustomSizing = true; // SentryGun uses custom sizing approach
+                console.log('🔨 Using sentry gun texture:', textureKey);
                 break;
             case 'barricade':
                 textureKey = 'barricade';
                 // Match the exact scaling used in Barricade constructor  
                 scale = 0.6; // Barricade uses 0.6 scale after SpriteScaler
+                console.log('🔨 Using barricade texture:', textureKey, 'with scale:', scale);
                 break;
             default:
-                console.warn(`Unknown equipment type for preview: ${equipmentId}`);
+                console.warn(`🔨 Unknown equipment type for preview: ${equipmentId}`);
+                console.log('🔨 === CREATE PLACEMENT PREVIEW DEBUG END (UNKNOWN TYPE) ===');
                 return;
         }
         
         // Check if texture exists
+        console.log('🔨 Checking if texture exists:', textureKey);
         if (!this.textures.exists(textureKey)) {
-            console.warn(`Preview texture not found: ${textureKey}`);
+            console.warn(`🔨 Preview texture not found: ${textureKey}`);
+            console.log('🔨 Available textures:', Object.keys(this.textures.list).slice(0, 10));
+            console.log('🔨 === CREATE PLACEMENT PREVIEW DEBUG END (NO TEXTURE) ===');
             return;
         }
+        console.log('🔨 Texture exists, creating sprite...');
         
         // Create preview sprite
         this.placementPreview = this.add.sprite(0, 0, textureKey);
+        console.log('🔨 Sprite created:', !!this.placementPreview);
+        
         this.placementPreview.setAlpha(0.6); // Semi-transparent
         this.placementPreview.setDepth(1600); // Above most other objects
+        console.log('🔨 Alpha and depth set');
         
         // Apply sizing to match the actual item exactly
         try {
             if (useCustomSizing && equipmentId === 'sentryGun') {
+                console.log('🔨 Applying custom sizing for sentry gun...');
                 // Match SentryGun's exact sizing approach
                 SpriteScaler.autoScale(this.placementPreview, textureKey, { maintainAspectRatio: false });
                 
                 // Force exact size like SentryGun does
                 if (this.placementPreview.displayWidth !== 48 || this.placementPreview.displayHeight !== 72) {
                     this.placementPreview.setDisplaySize(48, 72);
-                    console.log(`📋 Forced sentry gun preview size to 48x72 (was ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight})`);
+                    console.log(`🔨 Forced sentry gun preview size to 48x72 (was ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight})`);
                 }
             } else {
+                console.log('🔨 Applying standard scaling for barricade...');
                 // Standard scaling approach for other items (like barricade)
                 SpriteScaler.autoScale(this.placementPreview, textureKey, { maintainAspectRatio: true });
                 // Then apply the additional scale that matches the actual item
                 this.placementPreview.setScale(this.placementPreview.scaleX * scale, this.placementPreview.scaleY * scale);
+                console.log('🔨 Applied scale:', scale, 'final scale:', this.placementPreview.scaleX, this.placementPreview.scaleY);
             }
         } catch (error) {
-            console.warn('Could not apply SpriteScaler to preview:', error);
+            console.warn('🔨 Could not apply SpriteScaler to preview:', error);
             // Fallback to manual scaling if SpriteScaler fails
             if (useCustomSizing && equipmentId === 'sentryGun') {
                 this.placementPreview.setDisplaySize(48, 72);
+                console.log('🔨 Applied fallback sizing for sentry gun');
             } else {
                 this.placementPreview.setScale(scale);
+                console.log('🔨 Applied fallback scale for barricade:', scale);
             }
         }
         
         this.isShowingPreview = true;
         this.currentPreviewType = equipmentId; // Track what type of preview we're showing
-        console.log(`📋 Created placement preview for ${equipmentId} - final size: ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight}`);
+        
+        console.log('🔨 Final preview state:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview,
+            previewSize: this.placementPreview ? `${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight}` : 'none'
+        });
+        console.log(`🔨 Created placement preview for ${equipmentId} - final size: ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight}`);
+        console.log('🔨 === CREATE PLACEMENT PREVIEW DEBUG END ===');
     }
     
     updatePlacementPreview() {
@@ -4326,29 +4375,89 @@ export class GameScene extends Phaser.Scene {
     }
     
     destroyPlacementPreview() {
+        console.log('💥 === DESTROY PLACEMENT PREVIEW DEBUG START ===');
+        console.log('💥 Current state before destroy:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview
+        });
+        
         if (this.placementPreview) {
+            console.log('💥 Destroying preview sprite...');
             this.placementPreview.destroy();
             this.placementPreview = null;
+            console.log('💥 Preview sprite destroyed');
+        } else {
+            console.log('💥 No preview sprite to destroy');
         }
+        
         this.isShowingPreview = false;
         this.currentPreviewType = null; // Clear the tracked preview type
+        
+        console.log('💥 Final state after destroy:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview
+        });
+        console.log('💥 === DESTROY PLACEMENT PREVIEW DEBUG END ===');
     }
     
     handleEquipmentChange() {
+        console.log('📋 === HANDLE EQUIPMENT CHANGE DEBUG START ===');
         const equipment = this.player.getCurrentSlotEquipment();
         
+        console.log('📋 Current equipment:', {
+            equipment: equipment,
+            type: equipment ? equipment.type : 'none',
+            id: equipment ? equipment.id : 'none',
+            count: equipment ? equipment.count : 'none'
+        });
+        
+        console.log('📋 Current preview state:', {
+            isShowingPreview: this.isShowingPreview,
+            currentPreviewType: this.currentPreviewType,
+            previewExists: !!this.placementPreview
+        });
+        
         if (equipment && equipment.type === 'placeable' && equipment.count > 0) {
+            console.log('📋 Equipment is placeable with count > 0');
             // Player switched to a placeable item
-            if (!this.isShowingPreview || this.currentPreviewType !== equipment.id) {
+            const shouldCreatePreview = !this.isShowingPreview || this.currentPreviewType !== equipment.id;
+            console.log('📋 Should create preview?', shouldCreatePreview, {
+                notShowingPreview: !this.isShowingPreview,
+                differentPreviewType: this.currentPreviewType !== equipment.id,
+                currentPreviewType: this.currentPreviewType,
+                equipmentId: equipment.id
+            });
+            
+            if (shouldCreatePreview) {
                 // Create new preview or recreate if equipment type changed
+                console.log('📋 Creating placement preview for:', equipment.id);
                 this.createPlacementPreview(equipment.id);
+                console.log('📋 Preview created, new state:', {
+                    isShowingPreview: this.isShowingPreview,
+                    currentPreviewType: this.currentPreviewType,
+                    previewExists: !!this.placementPreview
+                });
+            } else {
+                console.log('📋 Preview already showing for same equipment type, no action needed');
             }
         } else {
+            console.log('📋 Equipment is not placeable or count <= 0, destroying preview');
             // Player switched to weapon or empty slot - hide preview
             if (this.isShowingPreview) {
+                console.log('📋 Destroying existing preview');
                 this.destroyPlacementPreview();
+                console.log('📋 Preview destroyed, new state:', {
+                    isShowingPreview: this.isShowingPreview,
+                    currentPreviewType: this.currentPreviewType,
+                    previewExists: !!this.placementPreview
+                });
+            } else {
+                console.log('📋 No preview to destroy');
             }
         }
+        console.log('📋 === HANDLE EQUIPMENT CHANGE DEBUG END ===');
     }
 }
 
