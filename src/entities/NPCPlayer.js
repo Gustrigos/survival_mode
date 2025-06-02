@@ -17,7 +17,7 @@ export class NPCPlayer extends Player {
         };
         
         // DEBUG: Enable/disable debug logging for NPCs
-        this.debugEnabled = true; // Set to false to disable debug logging
+        this.debugEnabled = false; // Set to false to disable debug logging
         
         // AI behavior properties
         this.target = null; // Current zombie target
@@ -195,6 +195,38 @@ export class NPCPlayer extends Player {
         }
         
         // SIMPLIFIED AI: FOLLOW FIRST, EVERYTHING ELSE SECOND
+        
+        // EMERGENCY MODE: If EXTREMELY far from leader, use direct movement to get back
+        if (distanceToLeader > this.squadConfig.maxSeparation * 1.5) {
+            if (this.debugEnabled) {
+                console.log(`🚨 ${this.squadConfig.name} EMERGENCY RETURN - too far (${distanceToLeader.toFixed(1)} > ${(this.squadConfig.maxSeparation * 1.5).toFixed(1)})`);
+            }
+            this.target = null;
+            this.isFollowing = true;
+            this.isRetreating = false;
+            
+            // Clear pathfinding persistence to force recalculation
+            this.currentPathDirection = null;
+            this.lastPathChoiceTime = 0;
+            this.isStuck = false;
+            this.unstuckAttempts = 0;
+            
+            // Direct movement to leader - ignore all obstacles and formation
+            const dx = this.scene.player.x - this.x;
+            const dy = this.scene.player.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                const speed = 250; // Fast emergency return speed
+                this.setVelocity((dx / distance) * speed, (dy / distance) * speed);
+                
+                const angle = Math.atan2(dy, dx);
+                this.updateDirectionFromMovement(angle);
+                this.setMoving(true);
+            }
+            
+            return; // Skip all other AI logic during emergency return
+        }
         
         // PRIORITY 1: If too far from leader, ALWAYS return to formation (ignore everything else)
         if (distanceToLeader > this.squadConfig.maxSeparation * 0.8) { // Reduced threshold from 1.0 to 0.8
@@ -466,6 +498,30 @@ export class NPCPlayer extends Player {
     updateFollowBehavior() {
         if (!this.scene.player) return;
         
+        const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
+        
+        // EMERGENCY BYPASS: If extremely far from leader, skip all complex logic and go direct
+        if (distanceToLeader > this.squadConfig.maxSeparation * 1.2) {
+            if (this.debugEnabled) {
+                console.log(`🚨 ${this.squadConfig.name} EMERGENCY BYPASS in follow behavior (${distanceToLeader.toFixed(1)} > ${(this.squadConfig.maxSeparation * 1.2).toFixed(1)})`);
+            }
+            
+            // Direct movement to leader position - ignore formation and spacing
+            const dx = this.scene.player.x - this.x;
+            const dy = this.scene.player.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 0) {
+                const speed = 220; // Fast emergency speed
+                this.setVelocity((dx / distance) * speed, (dy / distance) * speed);
+                
+                const angle = Math.atan2(dy, dx);
+                this.updateDirectionFromMovement(angle);
+                this.setMoving(true);
+            }
+            return; // Skip all other follow logic
+        }
+        
         // === SQUAD COMMAND MODE HANDLING ===
         let desiredX, desiredY;
         
@@ -487,14 +543,20 @@ export class NPCPlayer extends Player {
             desiredY = this.scene.player.y + this.squadConfig.formationOffset.y;
         }
         
-        // Add dynamic spacing to prevent overlapping with other squad members
-        const spacing = this.calculateDynamicSpacing(desiredX, desiredY);
-        desiredX += spacing.x;
-        desiredY += spacing.y;
+        // CONDITIONAL dynamic spacing - only apply when close to leader to prevent scattering
+        if (distanceToLeader <= this.squadConfig.maxSeparation * 0.7) {
+            const spacing = this.calculateDynamicSpacing(desiredX, desiredY);
+            desiredX += spacing.x;
+            desiredY += spacing.y;
+        } else {
+            // When far from leader, ignore spacing to focus on getting back
+            if (this.debugEnabled) {
+                console.log(`🎯 ${this.squadConfig.name} IGNORING spacing - too far from leader (${distanceToLeader.toFixed(1)})`);
+            }
+        }
         
         // Calculate distances
         const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
-        const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
         
         // DEBUG: Log follow behavior details
         if (this.debugEnabled) {
@@ -516,8 +578,18 @@ export class NPCPlayer extends Player {
         
         // Only move if outside the dead zone AND should follow
         if (shouldFollow && distanceToDesired > deadZone) {
-            // Smart pathfinding: calculate movement with obstacle avoidance
-            const moveVector = this.calculateSmartMovement(desiredX, desiredY);
+            // SIMPLIFIED pathfinding when far from leader
+            let moveVector;
+            if (distanceToLeader > this.squadConfig.maxSeparation * 0.8) {
+                // Use direct path when far from leader to avoid pathfinding loops
+                moveVector = this.getDirectPathToTarget(desiredX, desiredY);
+                if (this.debugEnabled) {
+                    console.log(`🏃 ${this.squadConfig.name} DIRECT PATH when far from leader`);
+                }
+            } else {
+                // Use smart pathfinding only when close to leader
+                moveVector = this.calculateSmartMovement(desiredX, desiredY);
+            }
             
             // Adjust speed based on distance and retreat status
             let speed = 100; // Reduced base speed from 120 to 100 for more controlled movement
@@ -525,7 +597,7 @@ export class NPCPlayer extends Player {
             if (this.isRetreating) {
                 speed = 200; // Reduced from 250 but still fast when retreating
             } else if (distanceToLeader > this.squadConfig.maxSeparation) {
-                speed = 180; // Reduced from 220 when too far from leader
+                speed = 200; // Increased from 180 - faster when too far from leader
             } else if (distanceToDesired > followThreshold * 1.5) {
                 speed = 140; // Reduced from 180 when moderately far
             } else {
@@ -562,7 +634,7 @@ export class NPCPlayer extends Player {
     
     calculateDynamicSpacing(targetX, targetY) {
         // SIMPLIFIED: Much less aggressive spacing to prevent scattering
-        const minSpacing = 35; // Reduced from 45 - allow closer formation
+        const minSpacing = 30; // Reduced from 35 - allow even closer formation
         let totalPushX = 0;
         let totalPushY = 0;
         let nearbyMembers = 0;
@@ -580,8 +652,8 @@ export class NPCPlayer extends Player {
                         const angle = Phaser.Math.Angle.Between(otherMember.x, otherMember.y, targetX, targetY);
                         const pushStrength = (minSpacing - distance) / minSpacing; // Stronger push when closer
                         
-                        // MUCH gentler push force (reduced from 30 to 15)
-                        const pushForce = pushStrength * 15;
+                        // EVEN gentler push force (reduced from 15 to 10)
+                        const pushForce = pushStrength * 10;
                         
                         totalPushX += Math.cos(angle) * pushForce;
                         totalPushY += Math.sin(angle) * pushForce;
@@ -591,7 +663,7 @@ export class NPCPlayer extends Player {
         }
         
         // Cap the maximum push to prevent extreme movements
-        const maxPush = 25; // Maximum spacing adjustment
+        const maxPush = 15; // Reduced from 25 to 15 - smaller maximum spacing adjustment
         const pushMagnitude = Math.sqrt(totalPushX * totalPushX + totalPushY * totalPushY);
         
         if (pushMagnitude > maxPush) {
