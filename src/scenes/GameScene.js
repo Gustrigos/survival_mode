@@ -251,8 +251,6 @@ export class GameScene extends Phaser.Scene {
         this.createSquad();
         
         // === SQUAD COMMAND SYSTEM ===
-        // DISABLED FOR SIMPLIFIED AI - NPCs should only follow
-        /*
         this.squadMode = 'follow'; // 'follow', 'hold', or 'move'
         this.pingTarget = null; // Current ping target for focus fire
         this.pingMarker = null; // Visual marker for ping
@@ -289,7 +287,6 @@ export class GameScene extends Phaser.Scene {
         
         // Mark squad commands as ready
         this.squadCommandsInitialized = true;
-        */
         
         // Camera setup - follow player with bounds
         this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
@@ -1433,8 +1430,6 @@ export class GameScene extends Phaser.Scene {
         // Remove F key sentry gun placement - now handled by SPACE with slot 2
         
         // === SQUAD COMMANDS ===
-        // DISABLED: Q key command wheel for simplified AI - NPCs just follow
-        /*
         // Q key - Hold to show command wheel
         const qKey = this.input.keyboard.addKey('Q');
         if (qKey.isDown && !this.qKeyWasDown) {
@@ -1455,10 +1450,6 @@ export class GameScene extends Phaser.Scene {
         
         // Track Q key state
         this.qKeyWasDown = qKey.isDown;
-        */
-        
-        // Track Q key state
-        this.qKeyWasDown = Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('Q'));
     }
     
     handleSpaceKey() {
@@ -2316,9 +2307,10 @@ export class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
         
-        // Universal bullet collision detection for friendly fire prevention
-        this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
-        this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
+        // REMOVED: Universal bullet collision detection for friendly fire prevention
+        // Bullets now pass through player and squad members completely invisibly
+        // this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
+        // this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
         
         // Sentry gun collisions - handle manually since we're not using physics groups
         // We'll check collisions in the update method instead
