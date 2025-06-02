@@ -45,13 +45,13 @@ export const GameConfig = {
             playerHealthMultiplier: 0.8
         },
         nightmare: {
-            zombiesFirstWave: 75,
+            zombiesFirstWave: 50,
             zombiesWaveIncrement: 10,
             zombieSpawnDelay: 200,
-            zombieHealthMultiplier: 1.5,
-            zombieSpeedMultiplier: 1.4,
+            zombieHealthMultiplier: 1.2,
+            zombieSpeedMultiplier: 1.0,
             squadSize: 4,
-            playerHealthMultiplier: 0.6
+            playerHealthMultiplier: 1.0
         }
     },
 
@@ -227,7 +227,7 @@ export const GameConfig = {
     // === UI/VISUAL SETTINGS ===
     ui: {
         showDebugInfo: true,
-        showHitboxes: true,     // Start with hitboxes visible
+        showHitboxes: true, 
         showSquadStatus: true,
         inventorySlots: 9,
         

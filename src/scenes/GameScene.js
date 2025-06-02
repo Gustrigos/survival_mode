@@ -321,6 +321,15 @@ export class GameScene extends Phaser.Scene {
         // Update UI
         this.updateUI();
         
+        // Press "H" to toggle collision-box visibility on-the-fly.
+        this.input.keyboard.on('keydown-H', () => {
+            this.showDebugBodies = !this.showDebugBodies;
+            if (this.physics.world.debugGraphic) {
+                this.physics.world.debugGraphic.visible = this.showDebugBodies;
+            }
+            console.log(`Debug hit-box overlay ${this.showDebugBodies ? 'ON' : 'OFF'}`);
+        });
+        
         // NOW CREATE SANDBAGS - All systems are ready!
         console.log('🛡️ All game systems initialized, now creating sandbags...');
         try {
@@ -363,13 +372,6 @@ export class GameScene extends Phaser.Scene {
         
         this.updateDebugText();
 
-        /* ============================
-         *  DEBUGGING AIDS
-         *  ---------------------------
-         *  1. Collision-shape overlay using Phaser's built-in Arcade-debug graphics.
-         *  2. Toggle with the "H" key (think "hit-box"). Starts enabled so you see it right away.
-         * ============================ */
-
         // Create a debug graphic once – Phaser will draw all bodies onto this each frame when enabled.
         this.physics.world.createDebugGraphic();
 
@@ -385,30 +387,6 @@ export class GameScene extends Phaser.Scene {
             this.physics.world.debugGraphic.visible = this.showDebugBodies;
         }
 
-        // Press "H" to toggle collision-box visibility on-the-fly.
-        this.input.keyboard.on('keydown-H', () => {
-            this.showDebugBodies = !this.showDebugBodies;
-            if (this.physics.world.debugGraphic) {
-                this.physics.world.debugGraphic.visible = this.showDebugBodies;
-            }
-            console.log(`Debug hit-box overlay ${this.showDebugBodies ? 'ON' : 'OFF'}`);
-        });
-        
-        // SIMPLE TEST: Try to create one basic brown rectangle as a sandbag
-        console.log('🧪 TESTING: Creating simple test sandbag...');
-        try {
-            const testSandbag = this.add.rectangle(950, 700, 48, 32, 0xC2B280); // Brown rectangle
-            testSandbag.setDepth(700);
-            console.log('✅ TEST: Simple sandbag rectangle created successfully at (950, 700)');
-        } catch (testError) {
-            console.error('❌ TEST: Failed to create simple sandbag rectangle:', testError);
-        }
-        
-        // NOTE: Sandbag creation moved to end of create() method after all systems are ready
-        
-        console.log('✅ Helicopter beacon and label have been removed');
-        console.log('🚁 Smoke effects added to main helicopter only');
-        console.log('🛡️ Defensive sandbags will be added after all systems are ready');
     }
 
     createCrashSiteMap() {
@@ -459,15 +437,9 @@ export class GameScene extends Phaser.Scene {
         crashedHelicopter.body.setImmovable(true);
         crashedHelicopter.body.setSize(200, 120); // Match the collision box from Structure.js
         
-        const building = this.add.rectangle(400, 500, 128, 96, 0xC0C0C0);
-        building.setDepth(500);
-        this.physics.add.existing(building, true);
-        building.body.setImmovable(true);
-        
         // Add collision for player
         if (this.player && this.player.body) {
             this.physics.add.collider(this.player, crashedHelicopter);
-            this.physics.add.collider(this.player, building);
         }
         
         console.log('Fallback background created');
@@ -646,9 +618,9 @@ export class GameScene extends Phaser.Scene {
             // SIMPLE TEST: Try to create one basic brown rectangle as a sandbag
             console.log('🧪 TESTING: Creating simple test sandbag...');
             try {
-                const testSandbag = this.add.rectangle(950, 700, 48, 32, 0xC2B280); // Brown rectangle
-                testSandbag.setDepth(700);
-                console.log('✅ TEST: Simple sandbag rectangle created successfully at (950, 700)');
+                // DISABLED: const testSandbag = this.add.rectangle(950, 700, 48, 32, 0xC2B280); // Brown rectangle
+                // DISABLED: testSandbag.setDepth(700);
+                console.log("✅ TEST: Second test sandbag creation disabled (was creating duplicate brown rectangle)");
             } catch (testError) {
                 console.error('❌ TEST: Failed to create simple sandbag rectangle:', testError);
             }
@@ -1006,6 +978,9 @@ export class GameScene extends Phaser.Scene {
                 const fallbackRect = this.add.rectangle(x, y, width, height, fallbackColor);
                 fallbackRect.setDepth(y + height);
                 
+                // MAKE FALLBACK VISIBLE: Set alpha to 0.7 so we can see what's creating invisible rectangles
+                fallbackRect.setAlpha(0.7);
+                
                 // Add basic physics body for collision
                 this.physics.add.existing(fallbackRect, true);
                 fallbackRect.body.setSize(width * 0.8, height * 0.8);
@@ -1093,39 +1068,39 @@ export class GameScene extends Phaser.Scene {
         console.log('Creating sparse urban vegetation...');
         
         try {
-            // Sparse palm trees
-            const palmPositions = [
-                {x: 200, y: 300}, {x: 1800, y: 400}, {x: 300, y: 1200}, {x: 1700, y: 1100}
-            ];
+            // DISABLED: Sparse palm trees (were creating invisible collision boxes when textures missing)
+            // const palmPositions = [
+            //     {x: 200, y: 300}, {x: 1800, y: 400}, {x: 300, y: 1200}, {x: 1700, y: 1100}
+            // ];
+            // 
+            // palmPositions.forEach(pos => {
+            //     const palmTree = this.createStructureWithFallback(pos.x, pos.y, 'palm_tree', {
+            //         type: 'palm_tree',
+            //         material: 'wood',
+            //         health: 120,
+            //         destructible: true
+            //     }, 0x8B7355, 48, 80);
+            //     
+            //     // Trees are automatically scaled in createStructureWithFallback now
+            // });
             
-            palmPositions.forEach(pos => {
-                const palmTree = this.createStructureWithFallback(pos.x, pos.y, 'palm_tree', {
-                    type: 'palm_tree',
-                    material: 'wood',
-                    health: 120,
-                    destructible: true
-                }, 0x8B7355, 48, 80);
-                
-                // Trees are automatically scaled in createStructureWithFallback now
-            });
+            // DISABLED: Dead trees (were creating invisible collision boxes when textures missing)
+            // const deadTreePositions = [
+            //     {x: 150, y: 800}, {x: 1900, y: 600}, {x: 400, y: 1300}
+            // ];
+            // 
+            // deadTreePositions.forEach(pos => {
+            //     const deadTree = this.createStructureWithFallback(pos.x, pos.y, 'dead_tree', {
+            //         type: 'dead_tree',
+            //         material: 'wood',
+            //         health: 60,
+            //         destructible: true
+            //     }, 0x654321, 32, 64);
+            //     
+            //     // Trees are automatically scaled in createStructureWithFallback now
+            // });
             
-            // Dead trees
-            const deadTreePositions = [
-                {x: 150, y: 800}, {x: 1900, y: 600}, {x: 400, y: 1300}
-            ];
-            
-            deadTreePositions.forEach(pos => {
-                const deadTree = this.createStructureWithFallback(pos.x, pos.y, 'dead_tree', {
-                    type: 'dead_tree',
-                    material: 'wood',
-                    health: 60,
-                    destructible: true
-                }, 0x654321, 32, 64);
-                
-                // Trees are automatically scaled in createStructureWithFallback now
-            });
-            
-            // Scrub bushes (non-collidable decoration)
+            // Scrub bushes (non-collidable decoration) - THESE ARE FINE since they don't use createStructureWithFallback
             const bushPositions = [
                 {x: 180, y: 400}, {x: 220, y: 450}, {x: 1800, y: 650},
                 {x: 1850, y: 700}, {x: 350, y: 1250}

@@ -79,8 +79,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.currentSlot = 1; // Currently selected slot
         
         // Debug: Verify equipment initialization
-        console.log('🎒 Equipment initialized:', this.equipment);
-        console.log('🎯 Current slot:', this.currentSlot);
         
         // Current weapon stats (will be updated based on currentWeapon)
         this.ammo = this.weapons[this.currentWeapon].ammo;
@@ -123,7 +121,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             // Set body size and center it (true flag centers automatically)
             this.body.setSize(collisionWidth, collisionHeight, true);
             
-            console.log(`Player SWAT body: ${collisionWidth.toFixed(1)}x${collisionHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         } else {
             this.setScale(1);
             
@@ -135,7 +132,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             // Set body size and center it automatically
             this.body.setSize(bodyWidth, bodyHeight, true);
             
-            console.log(`Player placeholder body: ${bodyWidth.toFixed(1)}x${bodyHeight.toFixed(1)} (${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)} sprite bounds)`);
         }
         
         // Make sure sprite is visible and properly configured
@@ -151,13 +147,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         // Weapon sprite attached to player
         this.weaponSprite = null; // Disabled to avoid performance hit
         
-        console.log('Player created with texture:', this.texture.key);
-        console.log('Using SWAT sprites:', this.usingSWATSprites);
-        console.log('Player position:', this.x, this.y);
-        console.log('Player scale:', this.scaleX, this.scaleY);
-        console.log('Player visible:', this.visible);
-        console.log('Player alpha:', this.alpha);
-        console.log('Player depth:', this.depth);
     }
     
     update(time, delta) {
@@ -195,11 +184,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             const oldDirection = this.direction;
             this.direction = direction;
             
-            console.log('🧭 DIRECTION CHANGE:', {
-                from: oldDirection,
-                to: direction,
-                playerPos: { x: this.x.toFixed(2), y: this.y.toFixed(2) }
-            });
             
             // Map diagonal directions to sprite directions (we don't have diagonal sprites)
             let spriteDirection = direction;
@@ -263,16 +247,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.isReloading || this.ammo <= 0 || currentTime - this.lastShotTime < this.fireRate) {
             return;
         }
-        
-        // Enhanced debugging for direction and position
-        console.log('🔫 SHOOTING DEBUG:', {
-            playerDirection: this.direction,
-            playerPosition: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
-            playerBodyCenter: { x: this.body.center.x.toFixed(2), y: this.body.center.y.toFixed(2) },
-            playerBodySize: { w: this.body.width, h: this.body.height },
-            playerScale: { x: this.scaleX.toFixed(3), y: this.scaleY.toFixed(3) },
-            usingSWATSprites: this.usingSWATSprites
-        });
 
         // Calculate bullet direction based on player direction
         let bulletVelX = 0;
@@ -628,7 +602,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         const equipment = this.getCurrentSlotEquipment();
         if (equipment && equipment.type === 'placeable' && equipment.count > 0) {
             equipment.count--;
-            console.log(`Used ${equipment.name}, remaining: ${equipment.count}`);
             return true;
         }
         return false;

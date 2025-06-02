@@ -99,7 +99,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Set initial texture
         this.setTexture(textureKey);
 
-        console.log(`🧟 Zombie created with stats: Health=${this.health}, Speed=${this.speed.toFixed(1)}, Damage=${this.damage} (Difficulty: ${GameConfig.currentDifficulty})`);
     }
     
     update(time, delta) {
@@ -268,13 +267,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             }
         }
         
-        /*
-         * Introduce a smaller, context-aware jitter so zombies don't visibly "stutter"
-         * when they are right up against sandbags or other solid objects.  When an
-         * obstacle is detected directly ahead we completely suppress the random
-         * offset – this lets the path-finding logic take over and avoids the rapid
-         * direction changes that made the sprite appear to stumble.
-         */
         let randomX = 0,
             randomY = 0;
         if (!obstacleAhead) {
