@@ -167,6 +167,12 @@ export class GameScene extends Phaser.Scene {
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
         
+        // === PLACEMENT PREVIEW SYSTEM ===
+        this.placementPreview = null; // The preview sprite
+        this.isShowingPreview = false; // Whether we're currently showing a preview
+        this.lastPreviewUpdate = 0; // Time tracking for preview updates
+        this.previewUpdateInterval = 50; // Update preview every 50ms for smooth movement
+        
         // Create detailed crash site background and structures
         this.createCrashSiteMap();
         
@@ -245,6 +251,8 @@ export class GameScene extends Phaser.Scene {
         this.createSquad();
         
         // === SQUAD COMMAND SYSTEM ===
+        // DISABLED FOR SIMPLIFIED AI - NPCs should only follow
+        /*
         this.squadMode = 'follow'; // 'follow', 'hold', or 'move'
         this.pingTarget = null; // Current ping target for focus fire
         this.pingMarker = null; // Visual marker for ping
@@ -281,6 +289,7 @@ export class GameScene extends Phaser.Scene {
         
         // Mark squad commands as ready
         this.squadCommandsInitialized = true;
+        */
         
         // Camera setup - follow player with bounds
         this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
@@ -325,14 +334,24 @@ export class GameScene extends Phaser.Scene {
         // Make this scene instance accessible for debugging
         if (typeof window !== 'undefined') {
             window.gameScene = this;
+            window.NPCPlayer = NPCPlayer; // Make NPCPlayer class available for debugging
             console.log('🔧 GameScene available globally as window.gameScene');
             console.log('🔧 Run gameScene.debugRoadLayout() to debug roads');
             console.log('🔧 Run gameScene.enableSeamlessTerrain() to fix ALL terrain gaps');
             console.log('🔧 Run gameScene.enableSeamlessRoads() to fix road gaps only');
+            console.log('');
+            console.log('🤖 NPC DEBUG CONTROLS:');
+            console.log('🔧 To enable debug for all NPCs: NPCPlayer.toggleAllDebug(gameScene, true)');
+            console.log('🔧 To disable debug for all NPCs: NPCPlayer.toggleAllDebug(gameScene, false)');
+            console.log('🔧 To debug individual NPC: gameScene.squadMembers.children.entries[0].enableDebug()');
+            console.log('🔧 Available NPCs: Charlie, Delta, Alpha, Bravo');
         }
         
         // Create inventory hotbar (Minecraft style)
         this.createInventoryHotbar();
+        
+        // Initialize placement preview if player starts with a placeable item
+        this.handleEquipmentChange();
         
         // Add debug text overlay
         this.debugText = this.add.text(10, 10, '', {
@@ -935,19 +954,16 @@ export class GameScene extends Phaser.Scene {
                             // Set up colliders with additional safety wrapping
                             this.physics.add.collider(this.player, sandbag, (player, sandbagObj) => {
                                 if (player && sandbagObj && player.active && sandbagObj.active) {
-                                    console.log('🎯 Player collided with sandbag!');
                                 }
                             });
                             
                             this.physics.add.collider(this.squadMembers, sandbag, (unit, sandbagObj) => {
                                 if (unit && sandbagObj && unit.active && sandbagObj.active) {
-                                    console.log('🎯 Squad member collided with sandbag!');
                                 }
                             });
                             
                             this.physics.add.collider(this.zombies, sandbag, (zombie, sandbagObj) => {
                                 if (zombie && sandbagObj && zombie.active && sandbagObj.active) {
-                                    console.log('🎯 Zombie collided with sandbag!');
                                 }
                             });
                             
@@ -1275,6 +1291,13 @@ export class GameScene extends Phaser.Scene {
         // Update inventory hotbar
         this.updateInventoryHotbar();
         
+        // === PLACEMENT PREVIEW UPDATES ===
+        // Update placement preview if showing
+        if (this.isShowingPreview && time - this.lastPreviewUpdate > this.previewUpdateInterval) {
+            this.updatePlacementPreview();
+            this.lastPreviewUpdate = time;
+        }
+        
         // Clean up effects
         this.cleanupEffects();
         
@@ -1370,22 +1393,27 @@ export class GameScene extends Phaser.Scene {
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('ONE'))) {
             console.log('Key 1 pressed');
             this.player.switchToSlot(1);
+            this.handleEquipmentChange(); // Update placement preview
         }
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('TWO'))) {
             console.log('Key 2 pressed');
             this.player.switchToSlot(2);
+            this.handleEquipmentChange(); // Update placement preview
         }
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('THREE'))) {
             console.log('Key 3 pressed');
             this.player.switchToSlot(3);
+            this.handleEquipmentChange(); // Update placement preview
         }
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('FOUR'))) {
             console.log('Key 4 pressed');
             this.player.switchToSlot(4);
+            this.handleEquipmentChange(); // Update placement preview
         }
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('FIVE'))) {
             console.log('Key 5 pressed');
             this.player.switchToSlot(5);
+            this.handleEquipmentChange(); // Update placement preview
         }
         
         // Reloading (only works for weapons)
@@ -1405,6 +1433,8 @@ export class GameScene extends Phaser.Scene {
         // Remove F key sentry gun placement - now handled by SPACE with slot 2
         
         // === SQUAD COMMANDS ===
+        // DISABLED: Q key command wheel for simplified AI - NPCs just follow
+        /*
         // Q key - Hold to show command wheel
         const qKey = this.input.keyboard.addKey('Q');
         if (qKey.isDown && !this.qKeyWasDown) {
@@ -1425,6 +1455,10 @@ export class GameScene extends Phaser.Scene {
         
         // Track Q key state
         this.qKeyWasDown = qKey.isDown;
+        */
+        
+        // Track Q key state
+        this.qKeyWasDown = Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('Q'));
     }
     
     handleSpaceKey() {
@@ -1451,76 +1485,11 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
-        // Calculate placement position in front of player based on direction
-        let offsetX = 0;
-        let offsetY = 0;
-        const placeDistance = 80; // Distance in front of player
+        // Calculate placement position using shared method
+        const { placeX, placeY } = this.calculatePlacementPosition();
         
-        switch (this.player.direction) {
-            case 'up':
-                offsetY = -placeDistance;
-                break;
-            case 'down':
-                offsetY = placeDistance;
-                break;
-            case 'left':
-                offsetX = -placeDistance;
-                break;
-            case 'right':
-                offsetX = placeDistance;
-                break;
-            case 'up-left':
-                offsetX = -placeDistance * 0.707;
-                offsetY = -placeDistance * 0.707;
-                break;
-            case 'up-right':
-                offsetX = placeDistance * 0.707;
-                offsetY = -placeDistance * 0.707;
-                break;
-            case 'down-left':
-                offsetX = -placeDistance * 0.707;
-                offsetY = placeDistance * 0.707;
-                break;
-            case 'down-right':
-                offsetX = placeDistance * 0.707;
-                offsetY = placeDistance * 0.707;
-                break;
-            default:
-                // Default to placing in front (down)
-                offsetY = placeDistance;
-                break;
-        }
-        
-        const placeX = this.player.x + offsetX;
-        const placeY = this.player.y + offsetY;
-        
-        // Check if placement location is valid (not overlapping with structures)
-        let validPlacement = true;
-        
-        // Check collision with structures
-        this.structures.children.entries.forEach(structure => {
-            const distance = Phaser.Math.Distance.Between(placeX, placeY, structure.x, structure.y);
-            if (distance < 60) { // Minimum distance from structures
-                validPlacement = false;
-            }
-        });
-        
-        // Check collision with other sentry guns
-        if (this.sentryGunsList) {
-            this.sentryGunsList.forEach(sentryGun => {
-                if (sentryGun && sentryGun.active) {
-                    const distance = Phaser.Math.Distance.Between(placeX, placeY, sentryGun.x, sentryGun.y);
-                    if (distance < 80) { // Minimum distance between sentry guns
-                        validPlacement = false;
-                    }
-                }
-            });
-        }
-        
-        // Check if within world bounds
-        if (placeX < 50 || placeX > 1998 || placeY < 50 || placeY > 1486) {
-            validPlacement = false;
-        }
+        // Check if placement location is valid using shared method
+        const validPlacement = this.isPlacementValid(placeX, placeY, 'sentryGun');
         
         if (!validPlacement) {
             console.log('Cannot place sentry gun here - too close to other objects');
@@ -1536,6 +1505,9 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
+        // Hide placement preview before creating actual item
+        this.destroyPlacementPreview();
+        
         // Create sentry gun
         const sentryGun = new SentryGun(this, placeX, placeY);
         // Don't add to group manually - just store reference for updates
@@ -1546,17 +1518,11 @@ export class GameScene extends Phaser.Scene {
         
         // Set up solid collisions for this sentry gun (blocks movement)
         this.physics.add.collider(this.player, sentryGun, (player, sentry) => {
-            console.log('🎯 Player collided with sentry gun!', {
-                playerPos: { x: player.x, y: player.y },
-                sentryPos: { x: sentry.x, y: sentry.y },
-                playerVel: { x: player.body.velocity.x, y: player.body.velocity.y }
-            });
+
         });
         this.physics.add.collider(this.squadMembers, sentryGun, (unit, sentry) => {
-            console.log('🎯 Squad member collided with sentry gun!');
         });
         this.physics.add.collider(this.zombies, sentryGun, (zombie, sentry) => {
-            console.log('🎯 Zombie collided with sentry gun!');
         });
         
         // Add friendly fire protection for this sentry gun (same as squad members)
@@ -1585,6 +1551,10 @@ export class GameScene extends Phaser.Scene {
         // Use item from equipment
         this.player.usePlaceableItem();
         
+        // Check if we should show preview again (if player still has more items)
+        this.handleEquipmentChange();
+        
+        // Visual feedback for successful placement
         // Visual feedback for successful placement
         const successMarker = this.add.circle(placeX, placeY, 35, 0x00FF00, 0.5);
         successMarker.setDepth(1500);
@@ -1613,90 +1583,13 @@ export class GameScene extends Phaser.Scene {
             
             console.log('🛡️ Barricade equipment check passed');
             
-            // Calculate placement position in front of player based on direction
-            let offsetX = 0;
-            let offsetY = 0;
-            const placeDistance = 80; // Distance in front of player
-            
-            switch (this.player.direction) {
-                case 'up':
-                    offsetY = -placeDistance;
-                    break;
-                case 'down':
-                    offsetY = placeDistance;
-                    break;
-                case 'left':
-                    offsetX = -placeDistance;
-                    break;
-                case 'right':
-                    offsetX = placeDistance;
-                    break;
-                case 'up-left':
-                    offsetX = -placeDistance * 0.707;
-                    offsetY = -placeDistance * 0.707;
-                    break;
-                case 'up-right':
-                    offsetX = placeDistance * 0.707;
-                    offsetY = -placeDistance * 0.707;
-                    break;
-                case 'down-left':
-                    offsetX = -placeDistance * 0.707;
-                    offsetY = placeDistance * 0.707;
-                    break;
-                case 'down-right':
-                    offsetX = placeDistance * 0.707;
-                    offsetY = placeDistance * 0.707;
-                    break;
-                default:
-                    // Default to placing in front (down)
-                    offsetY = placeDistance;
-                    break;
-            }
-            
-            const placeX = this.player.x + offsetX;
-            const placeY = this.player.y + offsetY;
+            // Calculate placement position using shared method
+            const { placeX, placeY } = this.calculatePlacementPosition();
             
             console.log(`🛡️ Calculated placement position: ${placeX.toFixed(1)}, ${placeY.toFixed(1)}`);
             
-            // Check if placement location is valid (not overlapping with structures)
-            let validPlacement = true;
-            
-            // Check collision with structures
-            this.structures.children.entries.forEach(structure => {
-                const distance = Phaser.Math.Distance.Between(placeX, placeY, structure.x, structure.y);
-                if (distance < 50) { // Reduced from 60 for smaller barricades
-                    validPlacement = false;
-                }
-            });
-            
-            // Check collision with other barricades
-            if (this.barricadesList) {
-                this.barricadesList.forEach(barricade => {
-                    if (barricade && barricade.active) {
-                        const distance = Phaser.Math.Distance.Between(placeX, placeY, barricade.x, barricade.y);
-                        if (distance < 50) { // Reduced from 80 for smaller barricades
-                            validPlacement = false;
-                        }
-                    }
-                });
-            }
-            
-            // Check collision with sentry guns too
-            if (this.sentryGunsList) {
-                this.sentryGunsList.forEach(sentryGun => {
-                    if (sentryGun && sentryGun.active) {
-                        const distance = Phaser.Math.Distance.Between(placeX, placeY, sentryGun.x, sentryGun.y);
-                        if (distance < 60) { // Don't place too close to sentry guns
-                            validPlacement = false;
-                        }
-                    }
-                });
-            }
-            
-            // Check if within world bounds
-            if (placeX < 50 || placeX > 1998 || placeY < 50 || placeY > 1486) {
-                validPlacement = false;
-            }
+            // Check if placement location is valid using shared method
+            const validPlacement = this.isPlacementValid(placeX, placeY, 'barricade');
             
             if (!validPlacement) {
                 console.log('Cannot place barricade here - too close to other objects');
@@ -1713,6 +1606,9 @@ export class GameScene extends Phaser.Scene {
             }
             
             console.log('🛡️ Placement validation passed, creating barricade...');
+            
+            // Hide placement preview before creating actual item
+            this.destroyPlacementPreview();
             
             // Create barricade
             const barricade = new Barricade(this, placeX, placeY);
@@ -1734,15 +1630,12 @@ export class GameScene extends Phaser.Scene {
             // Set up solid collisions for this barricade (blocks movement)
             try {
                 this.physics.add.collider(this.player, barricade, (player, barricade) => {
-                    console.log('🎯 Player collided with barricade!');
                 });
                 
                 this.physics.add.collider(this.squadMembers, barricade, (unit, barricade) => {
-                    console.log('🎯 Squad member collided with barricade!');
                 });
                 
                 this.physics.add.collider(this.zombies, barricade, (zombie, barricade) => {
-                    console.log('🎯 Zombie collided with barricade!');
                 });
                 
                 // Add friendly fire protection for this barricade (same as squad members)
@@ -2375,6 +2268,9 @@ export class GameScene extends Phaser.Scene {
     }
     
     gameOver() {
+        // Clean up placement preview before transitioning
+        this.destroyPlacementPreview();
+        
         this.scene.start('GameOverScene', {
             score: window.gameState.score,
             wave: window.gameState.wave,
@@ -2430,77 +2326,57 @@ export class GameScene extends Phaser.Scene {
     
     // Custom collision handler for player vs squad members
     handleFriendlyCollision(player, squadMember) {
-        // Reduce the collision impact to make it less pushy
+        // SIMPLIFIED: Only separate when VERY close and only apply gentle force
         if (player.body && squadMember.body) {
-            // Apply very gentle separation to prevent stacking
             const distance = Phaser.Math.Distance.Between(player.x, player.y, squadMember.x, squadMember.y);
             
-            if (distance < 25 && distance > 0) { // Only when very close
-                // Calculate gentle push direction
+            // Only intervene when extremely close (reduced from 25 to 15)
+            if (distance < 15 && distance > 0) {
+                // Calculate separation direction
                 const angle = Phaser.Math.Angle.Between(player.x, player.y, squadMember.x, squadMember.y);
-                const pushForce = 30; // Very gentle
+                const pushForce = 15; // Much gentler (reduced from 30)
                 
-                // Push squad member away slightly
+                // Only push squad member, don't interfere with player
                 const pushX = Math.cos(angle) * pushForce;
                 const pushY = Math.sin(angle) * pushForce;
                 
-                squadMember.body.setVelocity(
-                    squadMember.body.velocity.x + pushX,
-                    squadMember.body.velocity.y + pushY
-                );
+                // IMPORTANT: Set velocity instead of adding to it to prevent accumulation
+                squadMember.body.setVelocity(pushX, pushY);
+                
+                // Only apply for a very brief moment
+                this.time.delayedCall(50, () => {
+                    if (squadMember && squadMember.body && squadMember.active) {
+                        // Don't zero velocity - let NPCPlayer logic take over
+                        // squadMember.body.setVelocity(0, 0); // REMOVED
+                    }
+                });
             }
-            
-            // Reduce bounce for smoother interaction
-            const originalBounce = squadMember.body.bounce;
-            squadMember.body.setBounce(0.05); // Very low bounce
-            
-            // Reset bounce after a short time
-            this.time.delayedCall(100, () => {
-                if (squadMember.body && squadMember.active) {
-                    squadMember.body.setBounce(originalBounce.x, originalBounce.y);
-                }
-            });
         }
     }
     
     // Custom collision handler for squad member vs squad member
     handleSquadCollision(squadMember1, squadMember2) {
-        // Apply gentle separation when squad members get too close
+        // SIMPLIFIED: Much less aggressive collision handling
         const distance = Phaser.Math.Distance.Between(squadMember1.x, squadMember1.y, squadMember2.x, squadMember2.y);
         
-        if (distance < 20 && distance > 0) { // Only when very close
+        // Only separate when extremely close (reduced from 20 to 12)
+        if (distance < 12 && distance > 0) {
             // Calculate separation direction
             const angle = Phaser.Math.Angle.Between(squadMember1.x, squadMember1.y, squadMember2.x, squadMember2.y);
-            const pushForce = 25; // Gentle separation force
+            const pushForce = 10; // Much gentler (reduced from 25)
             
-            // Push both squad members apart
+            // Apply minimal separation
             const pushX = Math.cos(angle) * pushForce;
             const pushY = Math.sin(angle) * pushForce;
             
-            squadMember1.body.setVelocity(
-                squadMember1.body.velocity.x - pushX * 0.5,
-                squadMember1.body.velocity.y - pushY * 0.5
-            );
+            // IMPORTANT: Set velocity instead of modifying it
+            squadMember1.body.setVelocity(-pushX * 0.5, -pushY * 0.5);
+            squadMember2.body.setVelocity(pushX * 0.5, pushY * 0.5);
             
-            squadMember2.body.setVelocity(
-                squadMember2.body.velocity.x + pushX * 0.5,
-                squadMember2.body.velocity.y + pushY * 0.5
-            );
-        }
-        
-        // Reduce velocities to minimize bouncing
-        if (squadMember1.body && squadMember2.body) {
-            const damping = 0.8; // Less aggressive damping
-            
-            squadMember1.body.setVelocity(
-                squadMember1.body.velocity.x * damping,
-                squadMember1.body.velocity.y * damping
-            );
-            
-            squadMember2.body.setVelocity(
-                squadMember2.body.velocity.x * damping,
-                squadMember2.body.velocity.y * damping
-            );
+            // Very brief separation, then let NPCPlayer logic take over
+            this.time.delayedCall(30, () => {
+                // Don't zero velocities - let NPCPlayer movement logic handle it
+            });
         }
     }
     
@@ -2525,7 +2401,8 @@ export class GameScene extends Phaser.Scene {
                 `Score: ${window.gameState.score || 0}`,
                 '',
                 'Press 1: Machine Gun, 2: Sentry Gun, 3: Barricade',
-                'Press SPACE to shoot/place'
+                'Press SPACE to shoot/place (Green=Valid, Red=Invalid)',
+                'Placement preview shows where items will be placed'
             ].join('\n'));
         }
     }
@@ -4235,6 +4112,243 @@ export class GameScene extends Phaser.Scene {
         
         // Note: Friendly fire protection for sandbags is handled by bulletHitSandbagFriendly
         // Zombie bullets can damage sandbags, but friendly bullets pass through harmlessly
+    }
+    
+    // === PLACEMENT PREVIEW SYSTEM ===
+    
+    createPlacementPreview(equipmentId) {
+        // Clean up any existing preview
+        this.destroyPlacementPreview();
+        
+        let textureKey = '';
+        let useCustomSizing = false;
+        let scale = 1;
+        
+        // Determine which sprite to use for preview
+        switch (equipmentId) {
+            case 'sentryGun':
+                textureKey = 'sentry_gun_right';
+                useCustomSizing = true; // SentryGun uses custom sizing approach
+                break;
+            case 'barricade':
+                textureKey = 'barricade';
+                // Match the exact scaling used in Barricade constructor  
+                scale = 0.6; // Barricade uses 0.6 scale after SpriteScaler
+                break;
+            default:
+                console.warn(`Unknown equipment type for preview: ${equipmentId}`);
+                return;
+        }
+        
+        // Check if texture exists
+        if (!this.textures.exists(textureKey)) {
+            console.warn(`Preview texture not found: ${textureKey}`);
+            return;
+        }
+        
+        // Create preview sprite
+        this.placementPreview = this.add.sprite(0, 0, textureKey);
+        this.placementPreview.setAlpha(0.6); // Semi-transparent
+        this.placementPreview.setDepth(1600); // Above most other objects
+        
+        // Apply sizing to match the actual item exactly
+        try {
+            if (useCustomSizing && equipmentId === 'sentryGun') {
+                // Match SentryGun's exact sizing approach
+                SpriteScaler.autoScale(this.placementPreview, textureKey, { maintainAspectRatio: false });
+                
+                // Force exact size like SentryGun does
+                if (this.placementPreview.displayWidth !== 48 || this.placementPreview.displayHeight !== 72) {
+                    this.placementPreview.setDisplaySize(48, 72);
+                    console.log(`📋 Forced sentry gun preview size to 48x72 (was ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight})`);
+                }
+            } else {
+                // Standard scaling approach for other items (like barricade)
+                SpriteScaler.autoScale(this.placementPreview, textureKey, { maintainAspectRatio: true });
+                // Then apply the additional scale that matches the actual item
+                this.placementPreview.setScale(this.placementPreview.scaleX * scale, this.placementPreview.scaleY * scale);
+            }
+        } catch (error) {
+            console.warn('Could not apply SpriteScaler to preview:', error);
+            // Fallback to manual scaling if SpriteScaler fails
+            if (useCustomSizing && equipmentId === 'sentryGun') {
+                this.placementPreview.setDisplaySize(48, 72);
+            } else {
+                this.placementPreview.setScale(scale);
+            }
+        }
+        
+        this.isShowingPreview = true;
+        this.currentPreviewType = equipmentId; // Track what type of preview we're showing
+        console.log(`📋 Created placement preview for ${equipmentId} - final size: ${this.placementPreview.displayWidth}x${this.placementPreview.displayHeight}`);
+    }
+    
+    updatePlacementPreview() {
+        if (!this.placementPreview || !this.isShowingPreview || !this.player) {
+            return;
+        }
+        
+        // Get current equipment to verify we should still show preview
+        const equipment = this.player.getCurrentSlotEquipment();
+        if (!equipment || equipment.type !== 'placeable' || equipment.count <= 0) {
+            this.destroyPlacementPreview();
+            return;
+        }
+        
+        // Check if equipment type has changed - if so, recreate preview
+        if (this.currentPreviewType !== equipment.id) {
+            this.createPlacementPreview(equipment.id);
+            return; // createPlacementPreview will handle the rest
+        }
+        
+        // Calculate placement position (same logic as in placeSentryGun/placeBarricade)
+        const { placeX, placeY } = this.calculatePlacementPosition();
+        
+        // Update preview position
+        this.placementPreview.x = placeX;
+        this.placementPreview.y = placeY;
+        
+        // Check if placement is valid and update preview appearance
+        const isValid = this.isPlacementValid(placeX, placeY, equipment.id);
+        
+        if (isValid) {
+            this.placementPreview.setTint(0x00ff00); // Green tint for valid placement
+        } else {
+            this.placementPreview.setTint(0xff0000); // Red tint for invalid placement
+        }
+        
+        // Add subtle pulsing effect
+        const pulseAlpha = 0.6 + Math.sin(this.time.now * 0.005) * 0.2;
+        this.placementPreview.setAlpha(pulseAlpha);
+    }
+    
+    calculatePlacementPosition() {
+        let offsetX = 0;
+        let offsetY = 0;
+        const placeDistance = 80; // Distance in front of player
+        
+        switch (this.player.direction) {
+            case 'up':
+                offsetY = -placeDistance;
+                break;
+            case 'down':
+                offsetY = placeDistance;
+                break;
+            case 'left':
+                offsetX = -placeDistance;
+                break;
+            case 'right':
+                offsetX = placeDistance;
+                break;
+            case 'up-left':
+                offsetX = -placeDistance * 0.707;
+                offsetY = -placeDistance * 0.707;
+                break;
+            case 'up-right':
+                offsetX = placeDistance * 0.707;
+                offsetY = -placeDistance * 0.707;
+                break;
+            case 'down-left':
+                offsetX = -placeDistance * 0.707;
+                offsetY = placeDistance * 0.707;
+                break;
+            case 'down-right':
+                offsetX = placeDistance * 0.707;
+                offsetY = placeDistance * 0.707;
+                break;
+            default:
+                // Default to placing in front (down)
+                offsetY = placeDistance;
+                break;
+        }
+        
+        return {
+            placeX: this.player.x + offsetX,
+            placeY: this.player.y + offsetY
+        };
+    }
+    
+    isPlacementValid(placeX, placeY, equipmentId) {
+        // Check if within world bounds
+        if (placeX < 50 || placeX > 1998 || placeY < 50 || placeY > 1486) {
+            return false;
+        }
+        
+        // Check collision with structures
+        for (let structure of this.structures.children.entries) {
+            const distance = Phaser.Math.Distance.Between(placeX, placeY, structure.x, structure.y);
+            const minDistance = equipmentId === 'sentryGun' ? 60 : 50;
+            if (distance < minDistance) {
+                return false;
+            }
+        }
+        
+        // Check collision with sentry guns
+        if (this.sentryGunsList) {
+            for (let sentryGun of this.sentryGunsList) {
+                if (sentryGun && sentryGun.active) {
+                    const distance = Phaser.Math.Distance.Between(placeX, placeY, sentryGun.x, sentryGun.y);
+                    const minDistance = equipmentId === 'sentryGun' ? 80 : 60;
+                    if (distance < minDistance) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Check collision with barricades
+        if (this.barricadesList) {
+            for (let barricade of this.barricadesList) {
+                if (barricade && barricade.active) {
+                    const distance = Phaser.Math.Distance.Between(placeX, placeY, barricade.x, barricade.y);
+                    const minDistance = 50;
+                    if (distance < minDistance) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Check collision with sandbags
+        if (this.sandbagsList) {
+            for (let sandbag of this.sandbagsList) {
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    const distance = Phaser.Math.Distance.Between(placeX, placeY, sandbag.x, sandbag.y);
+                    const minDistance = 40;
+                    if (distance < minDistance) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        return true; // Placement is valid
+    }
+    
+    destroyPlacementPreview() {
+        if (this.placementPreview) {
+            this.placementPreview.destroy();
+            this.placementPreview = null;
+        }
+        this.isShowingPreview = false;
+        this.currentPreviewType = null; // Clear the tracked preview type
+    }
+    
+    handleEquipmentChange() {
+        const equipment = this.player.getCurrentSlotEquipment();
+        
+        if (equipment && equipment.type === 'placeable' && equipment.count > 0) {
+            // Player switched to a placeable item
+            if (!this.isShowingPreview || this.currentPreviewType !== equipment.id) {
+                // Create new preview or recreate if equipment type changed
+                this.createPlacementPreview(equipment.id);
+            }
+        } else {
+            // Player switched to weapon or empty slot - hide preview
+            if (this.isShowingPreview) {
+                this.destroyPlacementPreview();
+            }
+        }
     }
 }
 

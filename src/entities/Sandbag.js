@@ -105,7 +105,6 @@ export class Sandbag extends Phaser.Physics.Arcade.Sprite {
                 const smallerScale = 0.6; // Same as current sandbags - 60% of the auto-scaled size
                 this.setScale(this.scaleX * smallerScale, this.scaleY * smallerScale);
                 
-                console.log(`🛡️ Sandbag scaled to: ${this.displayWidth}x${this.displayHeight} (maintaining current size)`);
             } catch (error) {
                 console.error('❌ Error scaling sandbag sprite:', error);
             }

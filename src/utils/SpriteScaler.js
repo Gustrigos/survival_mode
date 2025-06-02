@@ -127,7 +127,6 @@ export class SpriteScaler {
             sprite.setDisplaySize(targetWidth * scaleFactor, targetHeight * scaleFactor);
         }
         
-        console.log(`Scaled ${sprite.texture?.key || 'sprite'} to ${sprite.displayWidth}x${sprite.displayHeight}`);
     }
     
     /**

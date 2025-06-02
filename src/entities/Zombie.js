@@ -46,7 +46,7 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         // Set physics mass for realistic collisions
         this.body.setMass(0.9); // Slightly heavier than before for more realistic knockback
         this.body.setDrag(150); // Moderate drag for natural deceleration
-        this.body.setBounce(0.2); // Reduced bounce for less chaotic physics
+        this.body.setBounce(0.05); // Much smaller bounce coefficient
         
         this.usingSheet = useSheet;
         if (this.usingSheet) {
@@ -251,10 +251,21 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
             }
         }
         
-        // Apply velocity with some randomness for natural movement
-        const randomX = (Math.random() - 0.5) * 20;
-        const randomY = (Math.random() - 0.5) * 20;
-        
+        /*
+         * Introduce a smaller, context-aware jitter so zombies don't visibly "stutter"
+         * when they are right up against sandbags or other solid objects.  When an
+         * obstacle is detected directly ahead we completely suppress the random
+         * offset – this lets the path-finding logic take over and avoids the rapid
+         * direction changes that made the sprite appear to stumble.
+         */
+        let randomX = 0,
+            randomY = 0;
+        if (!obstacleAhead) {
+            const jitterMag = 14; // down from 20 – gentler sway
+            randomX = (Math.random() - 0.5) * jitterMag;
+            randomY = (Math.random() - 0.5) * jitterMag;
+        }
+
         this.setVelocity(finalVelocity.x + randomX, finalVelocity.y + randomY);
         
         // Update direction based on movement

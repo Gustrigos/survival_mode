@@ -16,12 +16,15 @@ export class NPCPlayer extends Player {
             ...squadConfig
         };
         
+        // DEBUG: Enable/disable debug logging for NPCs
+        this.debugEnabled = true; // Set to false to disable debug logging
+        
         // AI behavior properties
         this.target = null; // Current zombie target
         this.lastTargetScanTime = 0;
         this.targetScanInterval = 500; // Scan for targets every 500ms
         this.lastFollowUpdateTime = 0;
-        this.followUpdateInterval = 200; // Reduced frequency: Update follow position every 200ms (was 100ms)
+        this.followUpdateInterval = 300; // Increased from 200ms to 300ms - less frequent updates for smoother movement
         this.isFollowing = true;
         this.isDead = false; // Track death state to prevent multiple death calls
         this.isRetreating = false; // Track if NPC is retreating due to reloading
@@ -46,12 +49,12 @@ export class NPCPlayer extends Player {
         this.lastBlockingCheckTime = 0;
         this.blockingCheckInterval = 500; // Only check blocking every 500ms
         
-        // === SQUAD COMMAND PROPERTIES ===
-        this.squadMode = 'follow'; // 'follow' or 'hold' - controlled by player
-        this.pingTarget = null; // Specific zombie to focus fire on
-        this.pingLocation = null; // Specific location to move to
-        this.holdPosition = null; // Position to hold when in 'hold' mode
-        this.isExecutingPing = false; // Whether currently executing a ping command
+        // === SIMPLIFIED SQUAD PROPERTIES ===
+        this.squadMode = 'follow'; // ONLY follow mode for simplified AI
+        this.pingTarget = null; // Clear any ping targets  
+        this.pingLocation = null; // Clear any ping locations
+        this.holdPosition = null; // Clear any hold positions
+        this.isExecutingPing = false; // Clear command execution flag
         
         // Create name tag
         this.createNameTag();
@@ -61,6 +64,9 @@ export class NPCPlayer extends Player {
             this.switchWeapon(squadConfig.weapon);
         }
         
+        this.lastLeaderDistance = null; // Track last distance to leader for progress detection
+        this.lastLeaderProgressTime = 0;
+        this.noLeaderProgressCounter = 0; // Counts consecutive "no-progress" checks
     }
     
     createNameTag() {
@@ -184,13 +190,43 @@ export class NPCPlayer extends Player {
         const distanceToLeader = this.scene.player ? 
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
-        // PRIORITY 1: Execute squad commands FIRST - This takes precedence over everything except emergency retreat
-        if (this.executeSquadCommands(distanceToLeader)) {
-            return; // Skip all other AI logic when executing specific squad commands
+        // DEBUG: Log AI state every 2 seconds for this NPC
+        if (!this.lastDebugTime) this.lastDebugTime = 0;
+        if (this.debugEnabled && time - this.lastDebugTime > 2000) {
+            console.log(`🤖 ${this.squadConfig.name} AI DEBUG:`, {
+                distanceToLeader: distanceToLeader.toFixed(1),
+                position: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
+                leaderPos: this.scene.player ? { x: this.scene.player.x.toFixed(1), y: this.scene.player.y.toFixed(1) } : 'N/A',
+                hasTarget: !!this.target,
+                targetPos: this.target ? { x: this.target.x.toFixed(1), y: this.target.y.toFixed(1) } : 'N/A',
+                isRetreating: this.isRetreating,
+                isReloading: this.isReloading,
+                velocity: { x: this.body.velocity.x.toFixed(1), y: this.body.velocity.y.toFixed(1) }
+            });
+            this.lastDebugTime = time;
         }
         
-        // PRIORITY 2: If reloading and NOT in hold mode, retreat to leader
-        if (this.isRetreating && this.isReloading && this.squadMode !== 'hold') {
+        // SIMPLIFIED AI: FOLLOW FIRST, EVERYTHING ELSE SECOND
+        
+        // PRIORITY 1: If too far from leader, ALWAYS return to formation (ignore everything else)
+        if (distanceToLeader > this.squadConfig.maxSeparation * 0.8) { // Reduced threshold from 1.0 to 0.8
+            if (this.debugEnabled) {
+                console.log(`🔴 ${this.squadConfig.name} TOO FAR from leader (${distanceToLeader.toFixed(1)} > ${(this.squadConfig.maxSeparation * 0.8).toFixed(1)}) - RETURNING`);
+            }
+            this.target = null; // Abandon any target
+            this.isFollowing = true;
+            this.isRetreating = false; // Clear retreat state to focus on following
+            
+            // Force follow behavior update every frame when far from leader
+            this.updateFollowBehavior();
+            return; // Skip all other AI logic
+        }
+        
+        // PRIORITY 2: If reloading, retreat to leader (but only if not too far already)
+        if (this.isRetreating && this.isReloading) {
+            if (this.debugEnabled) {
+                console.log(`🟡 ${this.squadConfig.name} RETREATING while reloading`);
+            }
             this.target = null;
             this.isFollowing = true;
             // Force follow behavior update every frame during retreat for responsiveness
@@ -198,61 +234,62 @@ export class NPCPlayer extends Player {
             return; // Skip all other AI logic during retreat
         }
         
-        // PRIORITY 3: Check if we're blocking the player's line of fire (with cooldown to prevent spam)
-        if (time - this.lastBlockingCheckTime > this.blockingCheckInterval && 
-            time - this.lastRepositionTime > this.repositionCooldown) {
-            
-            if (this.isBlockingPlayer()) {
-                this.lastBlockingCheckTime = time;
-                this.repositionToAvoidBlocking();
-                this.lastRepositionTime = time; // Set repositioning cooldown
-                return; // Skip other AI logic while repositioning
-            }
-            this.lastBlockingCheckTime = time;
-        }
-        
-        // PRIORITY 4: If too far from leader AND NOT in hold mode, abandon combat and return to formation
-        if (distanceToLeader > this.squadConfig.maxSeparation && this.squadMode !== 'hold') {
-            this.target = null;
-            this.isFollowing = true;
-        }
-        
-        // PRIORITY 5: Scan for zombie targets periodically (but only if not in strict command mode)
-        // Only scan for targets if in follow mode or if in hold/move mode and at position
-        const canEngageCombat = this.squadMode === 'follow' || 
-                               (this.squadMode === 'hold' && this.holdPosition && 
-                                Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y) <= 25) ||
-                               (this.squadMode === 'move' && this.holdPosition && 
-                                Phaser.Math.Distance.Between(this.x, this.y, this.holdPosition.x, this.holdPosition.y) <= 25);
-        
-        if (time - this.lastTargetScanTime > this.targetScanInterval && 
-            distanceToLeader <= this.squadConfig.maxSeparation && 
-            !this.isRetreating && canEngageCombat) {
-            this.scanForTargets();
-            this.lastTargetScanTime = time;
-        }
-        
-        // PRIORITY 6: Shoot at target if we have one and are allowed to engage
-        if (this.target && this.target.active && 
-            distanceToLeader <= this.squadConfig.maxSeparation && 
-            !this.isRetreating && canEngageCombat) {
-            this.aimAndShoot();
-        }
-        
-        // PRIORITY 7: Always update follow behavior (but prioritize it when retreating or far from leader)
+        // PRIORITY 3: Update follow behavior regularly (most important)
         if (time - this.lastFollowUpdateTime > this.followUpdateInterval) {
             this.updateFollowBehavior();
             this.lastFollowUpdateTime = time;
         }
         
-        // PRIORITY 8: Smart reload logic - reload proactively when safe near leader
-        if (!this.isReloading && !this.isRetreating && distanceToLeader <= 50) {
-            // If low on ammo and close to leader, reload preemptively for safety
+        // PRIORITY 4: Only engage in combat if close to leader and not retreating
+        if (distanceToLeader <= this.squadConfig.maxSeparation * 0.6 && !this.isRetreating) { // Reduced from 0.8 to 0.6
+            // Scan for zombie targets periodically
+            if (time - this.lastTargetScanTime > this.targetScanInterval) {
+                if (this.debugEnabled) {
+                    console.log(`🔍 ${this.squadConfig.name} scanning for targets (close to leader: ${distanceToLeader.toFixed(1)})`);
+                }
+                this.scanForTargets();
+                this.lastTargetScanTime = time;
+            }
+            
+            // Shoot at target if we have one
+            if (this.target && this.target.active) {
+                // Double-check we're still close enough to leader before shooting
+                if (distanceToLeader <= this.squadConfig.maxSeparation * 0.6) {
+                    if (this.debugEnabled) {
+                        console.log(`🎯 ${this.squadConfig.name} engaging target at distance ${distanceToLeader.toFixed(1)} from leader`);
+                    }
+                    this.aimAndShoot();
+                } else {
+                    // Too far now, abandon target
+                    if (this.debugEnabled) {
+                        console.log(`⚠️ ${this.squadConfig.name} became too far during combat (${distanceToLeader.toFixed(1)}) - abandoning target`);
+                    }
+                    this.target = null;
+                    this.isFollowing = true;
+                }
+            }
+        } else {
+            // Too far for combat, abandon any target and focus on following
+            if (this.target) {
+                console.log(`❌ ${this.squadConfig.name} too far for combat (${distanceToLeader.toFixed(1)}) - abandoning target and following`);
+            }
+            this.target = null;
+            this.isFollowing = true;
+        }
+        
+        // PRIORITY 5: Smart reload logic - only when very close to leader
+        if (!this.isReloading && !this.isRetreating && distanceToLeader <= 40) { // Reduced from 50 to 40
             const ammoPercentage = this.ammo / this.maxAmmo;
             if (ammoPercentage <= 0.2 && !this.target) {
+                if (this.debugEnabled) {
+                    console.log(`🔄 ${this.squadConfig.name} reloading (${this.ammo}/${this.maxAmmo} ammo)`);
+                }
                 this.reload();
             }
         }
+        
+        // NEW: track leader progress to detect wall-sliding stuck cases
+        this.updateLeaderProgress(time, distanceToLeader);
     }
     
     scanForTargets() {
@@ -260,24 +297,45 @@ export class NPCPlayer extends Player {
         
         let closestZombie = null;
         let closestDistance = this.squadConfig.aggroRange;
+        let zombiesInRange = [];
         
         // Find closest zombie within aggro range
         this.scene.zombies.children.entries.forEach(zombie => {
             if (!zombie.active) return;
             
             const distance = Phaser.Math.Distance.Between(this.x, this.y, zombie.x, zombie.y);
-            if (distance < closestDistance) {
-                closestZombie = zombie;
-                closestDistance = distance;
+            if (distance < this.squadConfig.aggroRange) {
+                zombiesInRange.push({ zombie, distance });
+                if (distance < closestDistance) {
+                    closestZombie = zombie;
+                    closestDistance = distance;
+                }
             }
         });
+        
+        // DEBUG: Log target scanning results
+        if (this.debugEnabled) {
+            console.log(`🎯 ${this.squadConfig.name} TARGET SCAN:`, {
+                zombiesInRange: zombiesInRange.length,
+                aggroRange: this.squadConfig.aggroRange,
+                closestDistance: closestDistance.toFixed(1),
+                hasClosestZombie: !!closestZombie,
+                previousTarget: this.target ? 'had target' : 'no target'
+            });
+        }
         
         // Update target
         if (closestZombie) {
             this.target = closestZombie;
             this.isFollowing = false; // Stop following when engaging
+            if (this.debugEnabled) {
+                console.log(`🎯 ${this.squadConfig.name} acquired target at distance ${closestDistance.toFixed(1)}`);
+            }
         } else if (this.target) {
             // Only update behavior if we previously had a target
+            if (this.debugEnabled) {
+                console.log(`🎯 ${this.squadConfig.name} lost target - no zombies in range`);
+            }
             this.target = null;
             // Don't automatically set isFollowing = true here
             // Let the normal follow logic handle positioning
@@ -290,8 +348,25 @@ export class NPCPlayer extends Player {
             return;
         }
         
+        const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
+        const distanceToLeader = this.scene.player ? 
+            Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
+        
+        // DEBUG: Log aiming details
+        if (this.debugEnabled) {
+            console.log(`🎯 ${this.squadConfig.name} AIM & SHOOT:`, {
+                targetDistance: distanceToTarget.toFixed(1),
+                leaderDistance: distanceToLeader.toFixed(1),
+                targetPos: { x: this.target.x.toFixed(1), y: this.target.y.toFixed(1) },
+                myPos: { x: this.x.toFixed(1), y: this.y.toFixed(1) }
+            });
+        }
+        
         // Check line of sight before shooting to prevent friendly fire
         if (!this.scene.checkLineOfSight(this, this.target)) {
+            if (this.debugEnabled) {
+                console.log(`🚫 ${this.squadConfig.name} line of sight blocked - repositioning`);
+            }
             
             // Try to find a better shooting position
             this.repositionForClearShot();
@@ -328,8 +403,10 @@ export class NPCPlayer extends Player {
         this.setDirection(direction);
         
         // Shoot if we have a clear shot and are facing the right direction
-        const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
         if (distanceToTarget <= this.squadConfig.aggroRange) {
+            if (this.debugEnabled) {
+                console.log(`💥 ${this.squadConfig.name} SHOOTING at target (facing ${direction})`);
+            }
             this.shoot();
         }
     }
@@ -342,8 +419,14 @@ export class NPCPlayer extends Player {
         const currentDistanceToLeader = this.scene.player ? 
             Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y) : 0;
         
+        if (this.debugEnabled) {
+            console.log(`🔄 ${this.squadConfig.name} repositioning for clear shot - distance to leader: ${currentDistanceToLeader.toFixed(1)}`);
+        }
+        
         if (currentDistanceToLeader > this.squadConfig.maxSeparation * 0.9) {
-            console.log(`${this.squadConfig.name} too far from leader, abandoning target to return to formation`);
+            if (this.debugEnabled) {
+                console.log(`🚫 ${this.squadConfig.name} too far from leader (${currentDistanceToLeader.toFixed(1)} > ${(this.squadConfig.maxSeparation * 0.9).toFixed(1)}), abandoning target to return to formation`);
+            }
             this.target = null;
             return;
         }
@@ -351,6 +434,10 @@ export class NPCPlayer extends Player {
         // Try to find a better shooting position
         const targetAngle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
         const repositionDistance = 40; // Reduced from 60 to stay closer
+        
+        if (this.debugEnabled) {
+            console.log(`🎯 ${this.squadConfig.name} trying to reposition around target at distance ${repositionDistance}`);
+        }
         
         // Try multiple angles around the current position to find a clear shot
         const angles = [
@@ -364,6 +451,10 @@ export class NPCPlayer extends Player {
             const testX = this.x + Math.cos(angle) * repositionDistance;
             const testY = this.y + Math.sin(angle) * repositionDistance;
             
+            if (this.debugEnabled) {
+                console.log(`🧪 ${this.squadConfig.name} testing reposition to (${testX.toFixed(1)}, ${testY.toFixed(1)})`);
+            }
+            
             // Check if this position would give a clear shot
             // Create a temporary position object for testing
             const testPosition = { x: testX, y: testY, active: true };
@@ -371,6 +462,10 @@ export class NPCPlayer extends Player {
             if (this.scene.checkLineOfSight(testPosition, this.target)) {
                 // Also check that we're not moving too far from formation
                 const distanceToLeader = Phaser.Math.Distance.Between(testX, testY, this.scene.player.x, this.scene.player.y);
+                
+                if (this.debugEnabled) {
+                    console.log(`✅ ${this.squadConfig.name} found clear shot position - would be ${distanceToLeader.toFixed(1)} from leader`);
+                }
                 
                 if (distanceToLeader <= this.squadConfig.maxSeparation * 0.8) { // Use 80% for safety
                     // Move to this position using smart pathfinding
@@ -388,14 +483,26 @@ export class NPCPlayer extends Player {
                     this.setMoving(true);
                     
                     const degrees = Phaser.Math.RadToDeg(moveAngle);
-                    console.log(`${this.squadConfig.name} repositioning for clear shot at angle ${degrees.toFixed(0)}°`);
+                    if (this.debugEnabled) {
+                        console.log(`➡️ ${this.squadConfig.name} repositioning for clear shot at angle ${degrees.toFixed(0)}° (velocity: ${velocityX.toFixed(1)}, ${velocityY.toFixed(1)})`);
+                    }
                     return; // Found a good position, stop looking
+                } else {
+                    if (this.debugEnabled) {
+                        console.log(`❌ ${this.squadConfig.name} reposition would be too far from leader (${distanceToLeader.toFixed(1)})`);
+                    }
+                }
+            } else {
+                if (this.debugEnabled) {
+                    console.log(`❌ ${this.squadConfig.name} no clear shot from test position`);
                 }
             }
         }
         
         // If no good repositioning angle found, abandon target instead of backing up unsafely
-        console.log(`${this.squadConfig.name} no safe repositioning found, abandoning target`);
+        if (this.debugEnabled) {
+            console.log(`🚫 ${this.squadConfig.name} no safe repositioning found, abandoning target`);
+        }
         this.target = null;
     }
     
@@ -432,10 +539,23 @@ export class NPCPlayer extends Player {
         const distanceToDesired = Phaser.Math.Distance.Between(this.x, this.y, desiredX, desiredY);
         const distanceToLeader = Phaser.Math.Distance.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
         
+        // DEBUG: Log follow behavior details
+        if (this.debugEnabled) {
+            console.log(`🚶 ${this.squadConfig.name} FOLLOW DEBUG:`, {
+                currentPos: { x: this.x.toFixed(1), y: this.y.toFixed(1) },
+                desiredPos: { x: desiredX.toFixed(1), y: desiredY.toFixed(1) },
+                formationOffset: this.squadConfig.formationOffset,
+                spacing: { x: spacing.x.toFixed(1), y: spacing.y.toFixed(1) },
+                distanceToDesired: distanceToDesired.toFixed(1),
+                distanceToLeader: distanceToLeader.toFixed(1),
+                squadMode: this.squadMode,
+                isRetreating: this.isRetreating
+            });
+        }
+        
         // Define behavior thresholds
-        const deadZone = 25; // Don't move if closer than this to desired position
+        const deadZone = 35; // Increased from 25 - larger "good enough" zone to reduce jitter
         const followThreshold = this.squadConfig.followDistance; // 60-100 pixels depending on config
-        // Increased buffer from 20 to 30
         
         // Determine if we should follow based on distance and combat status
         // Both follow and move modes use the same logic
@@ -443,27 +563,35 @@ export class NPCPlayer extends Player {
                            ((this.squadMode === 'follow' || this.squadMode === 'move') && distanceToDesired > followThreshold) ||
                            distanceToLeader > this.squadConfig.maxSeparation; // Normal max separation for follow/move mode only
         
+        if (this.debugEnabled) {
+            console.log(`🤔 ${this.squadConfig.name} should follow: ${shouldFollow} (deadZone: ${deadZone}, followThreshold: ${followThreshold})`);
+        }
+        
         // Only move if outside the dead zone AND should follow
         if (shouldFollow && distanceToDesired > deadZone) {
             // Smart pathfinding: calculate movement with obstacle avoidance
             const moveVector = this.calculateSmartMovement(desiredX, desiredY);
             
             // Adjust speed based on distance and retreat status
-            let speed = 120; // Base speed
+            let speed = 100; // Reduced base speed from 120 to 100 for more controlled movement
             
             if (this.isRetreating) {
-                speed = 250; // Much faster when retreating for protection!
+                speed = 200; // Reduced from 250 but still fast when retreating
             } else if (distanceToLeader > this.squadConfig.maxSeparation) {
-                speed = 220; // Much faster when too far from leader
+                speed = 180; // Reduced from 220 when too far from leader
             } else if (distanceToDesired > followThreshold * 1.5) {
-                speed = 180; // Faster when moderately far
+                speed = 140; // Reduced from 180 when moderately far
             } else {
-                speed = 80; // Slower when close to avoid overshooting
+                speed = 70; // Reduced from 80 when close to avoid overshooting
             }
             
             // Apply the calculated movement vector with speed adjustment
             const velocityX = moveVector.x * (speed / 120); // Scale to desired speed
             const velocityY = moveVector.y * (speed / 120);
+            
+            if (this.debugEnabled) {
+                console.log(`🏃 ${this.squadConfig.name} MOVING to desired position - speed: ${speed}, velocity: (${velocityX.toFixed(1)}, ${velocityY.toFixed(1)}), moveVector: (${moveVector.x.toFixed(1)}, ${moveVector.y.toFixed(1)})`);
+            }
             
             this.setVelocity(velocityX, velocityY);
             
@@ -478,6 +606,9 @@ export class NPCPlayer extends Player {
             }
         } else {
             // Stop moving when in dead zone or when close enough
+            if (this.debugEnabled) {
+                console.log(`🛑 ${this.squadConfig.name} STOPPING - in dead zone or shouldn't follow`);
+            }
             this.setVelocity(0, 0);
             this.setMoving(false);
             this.isFollowing = false; // Clear following flag to prevent constant re-triggering
@@ -485,26 +616,50 @@ export class NPCPlayer extends Player {
     }
     
     calculateDynamicSpacing(targetX, targetY) {
-        // Check for nearby squad members and adjust position to avoid overlapping
-        const minSpacing = 45; // Minimum distance between squad members
+        // SIMPLIFIED: Much less aggressive spacing to prevent scattering
+        const minSpacing = 35; // Reduced from 45 - allow closer formation
         let totalPushX = 0;
         let totalPushY = 0;
+        let nearbyMembers = 0;
         
         if (this.scene.squadMembers) {
             this.scene.squadMembers.children.entries.forEach(otherMember => {
                 if (otherMember !== this && otherMember.active) {
                     const distance = Phaser.Math.Distance.Between(targetX, targetY, otherMember.x, otherMember.y);
                     
+                    // Only apply spacing when very close (reduced threshold)
                     if (distance < minSpacing && distance > 0) {
+                        nearbyMembers++;
+                        
                         // Calculate push vector away from other member
                         const angle = Phaser.Math.Angle.Between(otherMember.x, otherMember.y, targetX, targetY);
                         const pushStrength = (minSpacing - distance) / minSpacing; // Stronger push when closer
                         
-                        totalPushX += Math.cos(angle) * pushStrength * 30;
-                        totalPushY += Math.sin(angle) * pushStrength * 30;
+                        // MUCH gentler push force (reduced from 30 to 15)
+                        const pushForce = pushStrength * 15;
+                        
+                        totalPushX += Math.cos(angle) * pushForce;
+                        totalPushY += Math.sin(angle) * pushForce;
                     }
                 }
             });
+        }
+        
+        // Cap the maximum push to prevent extreme movements
+        const maxPush = 25; // Maximum spacing adjustment
+        const pushMagnitude = Math.sqrt(totalPushX * totalPushX + totalPushY * totalPushY);
+        
+        if (pushMagnitude > maxPush) {
+            const scale = maxPush / pushMagnitude;
+            totalPushX *= scale;
+            totalPushY *= scale;
+        }
+        
+        // Reduce push force when many members are nearby to prevent chaotic scattering
+        if (nearbyMembers > 1) {
+            const reductionFactor = 1 / Math.sqrt(nearbyMembers);
+            totalPushX *= reductionFactor;
+            totalPushY *= reductionFactor;
         }
         
         return { x: totalPushX, y: totalPushY };
@@ -545,6 +700,14 @@ export class NPCPlayer extends Player {
         
         // Check for obstacles in the direct path
         const obstacleAhead = this.checkForObstacles(directPath.x, directPath.y);
+        
+        // NEW: Special handling – if a sandbag is directly blocking path, go to entrance immediately
+        if (obstacleAhead && obstacleAhead.structureType === 'sandbags') {
+            if (this.debugEnabled) {
+                console.log(`🧱 ${this.squadConfig.name} sandbag wall ahead – seeking entrance`);
+            }
+            return this.getObstacleAvoidanceVector(targetX, targetY);
+        }
         
         if (!obstacleAhead) {
             // Direct path is clear, use it and remember it (only in follow mode)
@@ -1665,5 +1828,59 @@ export class NPCPlayer extends Player {
         
         // Return sorted by total distance (closest first)
         return entranceDistances.sort((a, b) => a.totalDistance - b.totalDistance);
+    }
+    
+    // DEBUG CONTROLS - Use these methods to control debug output
+    enableDebug() {
+        this.debugEnabled = true;
+        console.log(`🔧 Debug enabled for ${this.squadConfig.name}`);
+    }
+    
+    disableDebug() {
+        this.debugEnabled = false;
+        console.log(`🔧 Debug disabled for ${this.squadConfig.name}`);
+    }
+    
+    // Static method to enable/disable debug for all NPCs
+    static toggleAllDebug(scene, enabled) {
+        if (scene.squadMembers) {
+            scene.squadMembers.children.entries.forEach(npc => {
+                if (npc && npc.squadConfig) {
+                    npc.debugEnabled = enabled;
+                }
+            });
+            console.log(`🔧 Debug ${enabled ? 'enabled' : 'disabled'} for all NPCs`);
+        }
+    }
+    
+    // Track progress toward the leader – if we keep moving but not getting closer, mark as stuck
+    updateLeaderProgress(time, distanceToLeader) {
+        if (this.lastLeaderDistance === null) {
+            this.lastLeaderDistance = distanceToLeader;
+            this.lastLeaderProgressTime = time;
+            return;
+        }
+        const interval = 1000; // 1 s
+        if (time - this.lastLeaderProgressTime < interval) return;
+        const delta = this.lastLeaderDistance - distanceToLeader;
+        if (delta < 5) {
+            // Not closing the gap
+            this.noLeaderProgressCounter++;
+            if (this.noLeaderProgressCounter >= 2) { // ≥2 s of no progress
+                if (!this.isStuck && this.debugEnabled) {
+                    console.log(`⛔ ${this.squadConfig.name} no progress toward leader for ${this.noLeaderProgressCounter} s – flagging stuck`);
+                }
+                this.isStuck = true;
+            }
+        } else {
+            // Making progress → reset
+            this.noLeaderProgressCounter = 0;
+            if (this.isStuck && this.debugEnabled) {
+                console.log(`✅ ${this.squadConfig.name} progress toward leader resumed – clearing stuck flag`);
+            }
+            this.isStuck = false;
+        }
+        this.lastLeaderDistance = distanceToLeader;
+        this.lastLeaderProgressTime = time;
     }
 } 
