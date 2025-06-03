@@ -5,6 +5,7 @@ import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
 import { Barricade } from '../entities/Barricade.js';
 import { Sandbag } from '../entities/Sandbag.js';
+import { MilitaryCrate } from '../entities/MilitaryCrate.js';
 import { SentryGun } from '../entities/SentryGun.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
@@ -836,16 +837,6 @@ export class GameScene extends Phaser.Scene {
             } catch (testError) {
                 console.error('❌ TEST: Failed to create simple sandbag rectangle:', testError);
             }
-            
-            // Add defensive sandbags around the crash site
-            // console.log('🛡️ ABOUT TO CREATE SANDBAGS - calling createCrashSiteSandbags()...');
-            // this.createCrashSiteSandbags();
-            // console.log('🛡️ FINISHED CALLING createCrashSiteSandbags()');
-            // NOTE: Sandbag creation moved to end of create() method after all systems are ready
-            
-            console.log('✅ Helicopter beacon and label have been removed');
-            console.log('🚁 Smoke effects added to main helicopter only');
-            console.log('🛡️ Defensive sandbags will be added after all systems are ready');
             
             
         } catch (error) {
