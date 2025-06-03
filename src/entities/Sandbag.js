@@ -48,14 +48,23 @@ export class Sandbag extends Phaser.Physics.Arcade.Sprite {
             } catch (fallbackError) {
                 console.error('❌ Failed to create fallback sandbag texture:', fallbackError);
                 // Last resort - return a minimal object that will fail validation
-                return Object.assign(Object.create(Sandbag.prototype), {
+                // IMPORTANT: Don't call super() if we failed to create texture
+                const invalidSandbag = {
                     active: false,
                     scene: scene,
                     x: x,
                     y: y,
                     destroy: () => {},
-                    isActive: false
-                });
+                    isActive: false,
+                    body: null, // Explicitly set to null
+                    visible: false,
+                    alpha: 0,
+                    texture: null
+                };
+                
+                // Don't inherit from Sandbag prototype if we failed
+                console.warn('⚠️ Returning invalid sandbag object - should be filtered out in GameScene');
+                return invalidSandbag;
             }
         } else {
             // Use normal texture

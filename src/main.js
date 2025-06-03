@@ -1,5 +1,6 @@
 import { GameScene } from './scenes/GameScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
+import { MapSelectorScene } from './scenes/MapSelectorScene.js';
 import { GameOverScene } from './scenes/GameOverScene.js';
 
 // Game configuration
@@ -16,7 +17,7 @@ const config = {
             debug: false
         }
     },
-    scene: [GameScene, MenuScene, GameOverScene], // Start with GameScene first
+    scene: [MenuScene, MapSelectorScene, GameScene, GameOverScene], // Start with MenuScene first
     pixelArt: true, // For crisp pixel art
     antialias: false
 };

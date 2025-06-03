@@ -3,18 +3,22 @@ import { NPCPlayer } from '../entities/NPCPlayer.js';
 import { Zombie } from '../entities/Zombie.js';
 import { Bullet } from '../entities/Bullet.js';
 import { Structure } from '../entities/Structure.js';
-import { SentryGun } from '../entities/SentryGun.js';
 import { Barricade } from '../entities/Barricade.js';
 import { Sandbag } from '../entities/Sandbag.js';
+import { SentryGun } from '../entities/SentryGun.js';
 import { SpriteGenerator } from '../utils/SpriteGenerator.js';
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
 import { SpriteScaler } from '../utils/SpriteScaler.js';
 import { GameConfig } from '../utils/GameConfig.js';
+import { WorldGenerator } from '../modules/WorldGenerator.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
+        this.worldGenerator = new WorldGenerator();
+        this.generatedWorld = null;
+        this.useWorldGeneration = false;
     }
 
     preload() {
@@ -178,18 +182,30 @@ export class GameScene extends Phaser.Scene {
         // Create detailed crash site background and structures
         this.createCrashSiteMap();
         
-        // Create player in crash site area
+        // Create player in appropriate starting area
         console.log('Creating player...');
         try {
+            // Determine start position based on world generation mode
+            let startX = 900; // Default classic position
+            let startY = 650; // Default classic position
+            
+            if (this.useWorldGeneration && this.playerStartPosition) {
+                startX = this.playerStartPosition.x;
+                startY = this.playerStartPosition.y;
+                console.log(`🏁 Using procedural start position: (${startX}, ${startY})`);
+            } else {
+                console.log(`🏁 Using classic start position: (${startX}, ${startY})`);
+            }
+            
             // Check if player textures exist (SWAT or placeholder)
             if (this.textures.exists('swat_player') || this.textures.exists('player_down')) {
-                this.player = new Player(this, 900, 650); // Start closer to helicopter crash site
+                this.player = new Player(this, startX, startY);
                 console.log('Player created successfully with sprites');
                 console.log('Player texture:', this.player.texture.key);
                 console.log('Player using SWAT sprites:', this.player.usingSWATSprites);
             } else {
                 console.warn('No player textures found, creating fallback player');
-                this.createFallbackPlayer();
+                this.createFallbackPlayer(startX, startY);
             }
             
             // Make sure player is visible and properly positioned
@@ -390,8 +406,176 @@ export class GameScene extends Phaser.Scene {
     }
 
     createCrashSiteMap() {
-        console.log('Creating helicopter crash site map...');
+        console.log('Creating world map...');
         
+        // Check if we should use procedural world generation
+        const worldGenSettings = this.registry.get('worldGeneration');
+        this.useWorldGeneration = worldGenSettings && worldGenSettings.useWorldGeneration;
+        
+        if (this.useWorldGeneration) {
+            console.log('🌍 Using procedural world generation...');
+            this.createProceduralWorld(worldGenSettings);
+        } else {
+            console.log('🚁 Using classic helicopter crash site...');
+            this.createClassicCrashSite();
+        }
+    }
+
+    createProceduralWorld(settings) {
+        try {
+            // Generate the world data
+            this.generatedWorld = this.worldGenerator.generateWorld(settings.mapSize, settings.seed);
+            
+            // Update world bounds to match generated world
+            const { width, height } = this.generatedWorld.size;
+            this.physics.world.setBounds(0, 0, width, height);
+            
+            // Update game config for this session
+            GameConfig.world.width = width;
+            GameConfig.world.height = height;
+            
+            // Create terrain from generated data
+            this.createProceduralTerrain();
+            
+            // Place generated structures
+            this.createProceduralStructures();
+            
+            // Set player start position
+            if (this.generatedWorld.playerStartPosition) {
+                const startPos = this.generatedWorld.playerStartPosition;
+                if (this.player) {
+                    this.player.setPosition(startPos.x, startPos.y);
+                }
+                // Store start position for later use if player hasn't been created yet
+                this.playerStartPosition = startPos;
+            }
+            
+            console.log(`✅ Procedural world created: ${width}x${height} with seed ${this.generatedWorld.seed}`);
+            
+        } catch (error) {
+            console.error('❌ Error creating procedural world, falling back to classic mode:', error);
+            this.createClassicCrashSite();
+        }
+    }
+
+    createProceduralTerrain() {
+        const tileSize = 64;
+        const terrainData = this.generatedWorld.terrain;
+        
+        console.log(`🗺️ Creating procedural terrain with ${terrainData.size} tiles...`);
+        
+        for (const [posKey, tileData] of terrainData.entries()) {
+            const [x, y] = posKey.split(',').map(Number);
+            
+            let tile;
+            if (this.textures.exists(tileData.type)) {
+                tile = this.add.image(x + tileSize/2, y + tileSize/2, tileData.type);
+                
+                // Apply rotation if specified
+                if (tileData.rotation) {
+                    tile.setRotation(tileData.rotation);
+                }
+                
+                // Handle sprite sizing - oversize to eliminate gaps
+                const oversizeMultiplier = 1.25;
+                tile.setDisplaySize(tileSize * oversizeMultiplier, tileSize * oversizeMultiplier);
+                
+                // Apply filtering for pixel-perfect textures
+                tile.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+                
+            } else {
+                // Fallback to colored rectangle
+                console.warn(`Texture ${tileData.type} not found, using fallback`);
+                
+                // Use biome color as fallback
+                const biomeData = this.worldGenerator.getBiomes()[tileData.biome];
+                const color = biomeData ? biomeData.color : 0xFF00FF;
+                
+                tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, color);
+            }
+            
+            tile.setDepth(-10);
+        }
+    }
+
+    createProceduralStructures() {
+        console.log(`📦 Placing ${this.generatedWorld.structures.length} procedural structures...`);
+        
+        for (const structureData of this.generatedWorld.structures) {
+            try {
+                let structure;
+                
+                if (this.textures.exists(structureData.textureKey)) {
+                    // Create structure with proper configuration
+                    structure = new Structure(this, structureData.x, structureData.y, structureData.textureKey, {
+                        type: structureData.type,
+                        material: structureData.material,
+                        health: structureData.health,
+                        destructible: structureData.destructible
+                    });
+                    
+                    // Apply scaling if needed
+                    if (structureData.size) {
+                        structure.setDisplaySize(structureData.size.width, structureData.size.height);
+                    }
+                    
+                } else {
+                    console.warn(`Structure texture ${structureData.textureKey} not found, creating placeholder`);
+                    // Create colored rectangle placeholder
+                    structure = this.add.rectangle(
+                        structureData.x, 
+                        structureData.y, 
+                        structureData.size.width, 
+                        structureData.size.height, 
+                        0xFF00FF
+                    );
+                    
+                    this.physics.add.existing(structure, true);
+                    structure.body.setImmovable(true);
+                }
+                
+                // Add to structures group
+                this.structures.add(structure);
+                
+                // Special handling for helicopter crashes
+                if (structureData.structureId === 'helicopter_crash') {
+                    console.log(`🚁 Placed helicopter crash at (${structureData.x}, ${structureData.y}) in ${structureData.biome} biome`);
+                    
+                    // Add smoke effects to helicopter crashes (but not the original helicopter + smoke)
+                    // Since these are now barricades/obstacles, we'll add light smoke effects
+                    this.addLightSmokeEffect(structureData.x, structureData.y);
+                }
+                
+            } catch (error) {
+                console.error(`❌ Error creating structure at (${structureData.x}, ${structureData.y}):`, error);
+            }
+        }
+    }
+
+    addLightSmokeEffect(x, y) {
+        // Add a subtle smoke effect for procedurally placed helicopter crashes
+        // Much lighter than the main crash site
+        const smokeEmitter = this.add.particles(x, y - 50, 'smoke_puff', {
+            scale: { start: 0.1, end: 0.3 },
+            alpha: { start: 0.6, end: 0 },
+            speed: { min: 10, max: 30 },
+            lifespan: { min: 1000, max: 2000 },
+            frequency: 800, // Less frequent than main crash
+            angle: { min: -100, max: -80 }
+        });
+        
+        smokeEmitter.setDepth(800);
+        
+        // Create a small fire effect
+        if (this.textures.exists('small_fire')) {
+            const fire = this.add.image(x - 30, y, 'small_fire');
+            fire.setScale(0.3);
+            fire.setDepth(750);
+            fire.setAlpha(0.7);
+        }
+    }
+
+    createClassicCrashSite() {
         try {
             // Create base terrain
             this.createTerrain();
@@ -408,9 +592,9 @@ export class GameScene extends Phaser.Scene {
             // Create roads and paths
             this.createPaths();
             
-            console.log('Helicopter crash site map created successfully');
+            console.log('Classic helicopter crash site map created successfully');
         } catch (error) {
-            console.error('Error creating crash site map, using fallback:', error);
+            console.error('Error creating classic crash site map, using fallback:', error);
             this.createFallbackBackground();
         }
     }
@@ -561,14 +745,24 @@ export class GameScene extends Phaser.Scene {
                 } else {
                     console.warn(`Texture ${terrainType} not found, using fallback`);
                     
-                    // Create fallback colored rectangles
-                    let color = 0xF4E4BC; // Default sand color
-                    if (terrainType === 'rubble') color = 0x8B7355; // Brown rubble
-                    else if (terrainType === 'crackled_concrete') color = 0xB0B0B0; // Gray concrete
-                    else if (terrainType === 'dirt_road') color = 0xA0956F; // Dusty brown
-                    else if (terrainType === 'sand_texture') color = 0xF4A460; // Sandy brown
+                    // Create fallback colored rectangles - MAKE THEM BRIGHT PINK FOR DEBUG
+                    let color = 0xFF00FF; // BRIGHT PINK to identify missing terrain textures
                     
                     tile = this.add.rectangle(x + tileSize/2, y + tileSize/2, tileSize, tileSize, color);
+                    
+                    // Add debug label for terrain
+                    const terrainLabel = this.add.text(x + tileSize/2, y + tileSize/2, `TERRAIN:\n${terrainType}`, {
+                        fontSize: '8px',
+                        fill: '#FFFFFF',
+                        fontFamily: 'Arial',
+                        backgroundColor: '#FF00FF',
+                        padding: { x: 1, y: 1 },
+                        align: 'center'
+                    });
+                    terrainLabel.setOrigin(0.5);
+                    terrainLabel.setDepth(-5); // Above terrain but below other objects
+                    
+                    console.warn(`🚨 Missing terrain texture: ${terrainType} at (${x}, ${y})`);
                 }
                 tile.setDepth(-10);
             }
@@ -579,13 +773,31 @@ export class GameScene extends Phaser.Scene {
         console.log('Creating crash site structures...');
         
         try {
-            // Main crashed helicopter at center
-            const helicopter = this.createStructureWithFallback(1000, 750, 'crashed_helicopter', {
-                type: 'crashed_helicopter',
-                material: 'metal',
-                health: 1500,
-                destructible: false
-            }, 0x2F4F4F, 240, 160);
+            // Main crashed helicopter at center - SIMPLE VISIBLE PLACEHOLDER instead of invisible fallback
+            let helicopter;
+            if (this.textures.exists('crashed_helicopter')) {
+                // Use actual helicopter texture if available
+                helicopter = this.createStructureWithFallback(1000, 750, 'crashed_helicopter', {
+                    type: 'crashed_helicopter',
+                    material: 'metal',
+                    health: 1500,
+                    destructible: false
+                }, 0x2F4F4F, 240, 160);
+            } else {
+                // Create simple visible dark gray rectangle placeholder
+                console.log('🚁 Creating visible helicopter placeholder (crashed_helicopter texture not found)');
+                helicopter = this.add.rectangle(1000, 750, 240, 160, 0x2F4F4F);
+                helicopter.setDepth(750);
+                helicopter.setAlpha(0.8); // Make it clearly visible
+                
+                // Add physics body for collision
+                this.physics.add.existing(helicopter, true);
+                helicopter.body.setImmovable(true);
+                helicopter.body.setSize(200, 120);
+                
+                // Add to structures group
+                this.structures.add(helicopter);
+            }
             
             // Apply proper scaling using SpriteScaler instead of hardcoded scaling
             if (helicopter && helicopter.texture) {
@@ -635,104 +847,7 @@ export class GameScene extends Phaser.Scene {
             console.log('🚁 Smoke effects added to main helicopter only');
             console.log('🛡️ Defensive sandbags will be added after all systems are ready');
             
-            // Simplified layout: skip additional burning wreckage and debris to reduce ground clutter
-            return; // <-- no more structures after the main helicopter
             
-            // Burning wreckage around crash site
-            const burningPositions = [
-                {x: 900, y: 700}, {x: 1100, y: 800}, {x: 950, y: 850}
-            ];
-            
-            burningPositions.forEach(pos => {
-                const wreck = this.createStructureWithFallback(pos.x, pos.y, 'burning_wreckage', {
-                    type: 'burning_wreckage',
-                    material: 'metal',
-                    health: 200,
-                    destructible: true
-                }, 0x2F4F4F, 64, 48);
-
-                // Add pulsating fire effect to give life to the flames
-                this.tweens.add({
-                    targets: wreck,
-                    scaleX: { from: 0.9, to: 1.05 },
-                    scaleY: { from: 0.9, to: 1.05 },
-                    alpha: { from: 0.8, to: 1 },
-                    yoyo: true,
-                    repeat: -1,
-                    duration: Phaser.Math.Between(500, 800)
-                });
-
-                // Extra smoke from each burning wreckage
-                this.addHelicopterEffects(pos.x, pos.y);
-            });
-            
-            // Helicopter wreckage pieces
-            const wreckagePositions = [
-                {x: 850, y: 650}, {x: 1150, y: 700}, {x: 1050, y: 900}, {x: 800, y: 800}
-            ];
-            
-            wreckagePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'helicopter_wreckage', {
-                    type: 'helicopter_wreckage',
-                    material: 'metal',
-                    health: 100,
-                    destructible: true
-                }, 0x2F4F4F, 80, 60);
-            });
-            
-            // Somalia-style concrete buildings
-            const buildingPositions = [
-                {x: 400, y: 500, texture: 'concrete_building'},
-                {x: 600, y: 400, texture: 'damaged_building'},
-                {x: 1400, y: 600, texture: 'concrete_building'},
-                {x: 1600, y: 800, texture: 'damaged_building'}
-            ];
-            
-            buildingPositions.forEach(pos => {
-                const width = pos.texture === 'concrete_building' ? 128 : 96;
-                const height = pos.texture === 'concrete_building' ? 96 : 80;
-                this.createStructureWithFallback(pos.x, pos.y, pos.texture, {
-                    type: pos.texture,
-                    material: 'concrete',
-                    health: 1200,
-                    destructible: true
-                }, 0xC0C0C0, width, height);
-            });
-            
-            // Military supply crates
-            const cratePositions = [
-                {x: 450, y: 650}, {x: 520, y: 680}, {x: 380, y: 720},
-                {x: 1300, y: 500}, {x: 1350, y: 520}, {x: 1250, y: 480}
-            ];
-            
-            cratePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'military_crate', {
-                    type: 'military_crate',
-                    material: 'metal',
-                    health: 100,
-                    destructible: true
-                }, 0x4A5D23, 32, 32);
-            });
-            
-            // Debris piles
-            const debrisPositions = [
-                {x: 750, y: 750}, {x: 1200, y: 650}, {x: 900, y: 950},
-                {x: 1100, y: 600}, {x: 850, y: 900}
-            ];
-            
-            debrisPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'debris', {
-                    type: 'debris',
-                    material: 'concrete',
-                    health: 50,
-                    destructible: true
-                }, 0x696969, 32, 24);
-            });
-            
-            // Restore smoke / fire effects for the larger helicopter body
-            this.addHelicopterEffects(1000, 750);
-            
-            console.log('Crash site structures created successfully');
         } catch (error) {
             console.error('Error creating crash site structures:', error);
         }
@@ -856,7 +971,7 @@ export class GameScene extends Phaser.Scene {
                 ...easternSandbags,
                 ...additionalSandbags
             ];
-            
+
             // Create sandbag structures
             console.log(`🛡️ Attempting to create ${allSandbagPositions.length} sandbags...`);
             let successfulSandbags = 0;
@@ -881,6 +996,43 @@ export class GameScene extends Phaser.Scene {
                     // Make this check less restrictive - just check the essential properties
                     if (!sandbag || !sandbag.active || !sandbag.isActive) {
                         console.error('❌ Sandbag creation failed basic validation at', pos.x, pos.y);
+                        console.error('❌ Sandbag state:', {
+                            exists: !!sandbag,
+                            active: sandbag ? sandbag.active : 'N/A',
+                            isActive: sandbag ? sandbag.isActive : 'N/A',
+                            hasTexture: sandbag && sandbag.texture ? sandbag.texture.key : 'N/A',
+                            visible: sandbag ? sandbag.visible : 'N/A',
+                            alpha: sandbag ? sandbag.alpha : 'N/A'
+                        });
+                        return;
+                    }
+                    
+                    // Additional validation: check for invalid/broken sandbag objects
+                    const isInvalidSandbag = !sandbag.texture || 
+                                           sandbag.texture === null ||
+                                           sandbag.visible === false ||
+                                           sandbag.alpha === 0 ||
+                                           sandbag.displayWidth === 0 ||
+                                           sandbag.displayHeight === 0;
+                    
+                    if (isInvalidSandbag) {
+                        console.error('❌ Sandbag failed extended validation - object is broken:', {
+                            position: `(${pos.x}, ${pos.y})`,
+                            hasTexture: !!sandbag.texture,
+                            textureKey: sandbag.texture ? sandbag.texture.key : 'null',
+                            visible: sandbag.visible,
+                            alpha: sandbag.alpha,
+                            displaySize: `${sandbag.displayWidth}x${sandbag.displayHeight}`
+                        });
+                        
+                        // Clean up the broken sandbag
+                        if (sandbag.destroy && typeof sandbag.destroy === 'function') {
+                            try {
+                                sandbag.destroy();
+                            } catch (destroyError) {
+                                console.error('❌ Error destroying broken sandbag:', destroyError);
+                            }
+                        }
                         return;
                     }
                     
@@ -973,26 +1125,40 @@ export class GameScene extends Phaser.Scene {
                 this.structures.add(structure);
                 return structure;
             } else {
-                console.warn(`Texture ${textureKey} not found, creating fallback`);
-                // Create a simple colored rectangle as fallback
-                const fallbackRect = this.add.rectangle(x, y, width, height, fallbackColor);
+                console.warn(`🚨 MISSING TEXTURE: ${textureKey} not found at position (${x}, ${y}) - creating BRIGHT PINK fallback to identify it!`);
+                // Create a BRIGHT PINK rectangle so we can easily spot which texture is missing
+                const fallbackRect = this.add.rectangle(x, y, width, height, 0xFF00FF); // BRIGHT PINK
                 fallbackRect.setDepth(y + height);
                 
-                // MAKE FALLBACK VISIBLE: Set alpha to 0.7 so we can see what's creating invisible rectangles
-                fallbackRect.setAlpha(0.7);
+                // MAKE FALLBACK SUPER VISIBLE: Bright pink with full opacity
+                fallbackRect.setAlpha(1.0); // Full opacity so it's impossible to miss
+                
+                // Add text label to identify the missing texture
+                const debugLabel = this.add.text(x, y, `MISSING:\n${textureKey}`, {
+                    fontSize: '10px',
+                    fill: '#FFFFFF',
+                    fontFamily: 'Arial',
+                    backgroundColor: '#FF00FF',
+                    padding: { x: 2, y: 2 },
+                    align: 'center'
+                });
+                debugLabel.setOrigin(0.5);
+                debugLabel.setDepth(y + height + 1);
                 
                 // Add basic physics body for collision
                 this.physics.add.existing(fallbackRect, true);
                 fallbackRect.body.setSize(width * 0.8, height * 0.8);
                 fallbackRect.body.setImmovable(true);
                 
+                console.warn(`🚨 Created BRIGHT PINK fallback rectangle for missing texture: ${textureKey}`);
                 return fallbackRect;
             }
         } catch (error) {
             console.error(`Error creating structure ${textureKey}:`, error);
             // Create minimal fallback
-            const fallbackRect = this.add.rectangle(x, y, width || 32, height || 32, fallbackColor || 0x666666);
+            const fallbackRect = this.add.rectangle(x, y, width || 32, height || 32, 0xFF00FF); // BRIGHT PINK
             fallbackRect.setDepth(y + (height || 32));
+            console.warn(`🚨 Created EMERGENCY PINK fallback for failed structure: ${textureKey}`);
             return fallbackRect;
         }
     }
@@ -2578,8 +2744,8 @@ export class GameScene extends Phaser.Scene {
         
     }
 
-    createFallbackPlayer() {
-        this.player = this.add.rectangle(900, 650, 48, 64, 0x00ff00);
+    createFallbackPlayer(startX = 900, startY = 650) {
+        this.player = this.add.rectangle(startX, startY, 48, 64, 0x00ff00);
         this.player.setDepth(1000);
         
         // Add basic physics
@@ -4369,6 +4535,236 @@ export class GameScene extends Phaser.Scene {
             }
         }
         console.log('📋 === HANDLE EQUIPMENT CHANGE DEBUG END ===');
+    }
+    
+    /**
+     * Debug method to find and highlight invisible physics bodies
+     * Call from browser console: gameScene.debugInvisibleBodies()
+     */
+    debugInvisibleBodies() {
+        console.log('🔍 DEBUGGING INVISIBLE PHYSICS BODIES');
+        console.log('=====================================');
+        
+        let foundInvisible = 0;
+        
+        // Check all physics bodies in the world
+        this.physics.world.bodies.entries.forEach((body, index) => {
+            if (body && body.gameObject) {
+                const obj = body.gameObject;
+                
+                // Check if object has physics but is invisible/transparent
+                const isInvisible = obj.alpha === 0 || 
+                                  !obj.visible || 
+                                  (obj.tint !== undefined && obj.tint === 0x000000) ||
+                                  (obj.texture && obj.texture.key === '__MISSING') ||
+                                  obj.displayWidth === 0 ||
+                                  obj.displayHeight === 0;
+                
+                const hasNoTexture = obj.texture && (obj.texture.key === '__DEFAULT' || obj.texture.key === '__MISSING');
+                
+                if (isInvisible || hasNoTexture || obj.alpha < 0.1) {
+                    foundInvisible++;
+                    
+                    console.log(`🚨 FOUND INVISIBLE BODY ${foundInvisible}:`, {
+                        position: `(${obj.x.toFixed(1)}, ${obj.y.toFixed(1)})`,
+                        size: `${obj.displayWidth}x${obj.displayHeight}`,
+                        alpha: obj.alpha,
+                        visible: obj.visible,
+                        texture: obj.texture ? obj.texture.key : 'none',
+                        tint: obj.tint ? `0x${obj.tint.toString(16)}` : 'none',
+                        constructor: obj.constructor.name,
+                        structureType: obj.structureType || 'unknown',
+                        bodyType: body.isStatic ? 'static' : 'dynamic',
+                        bodySize: `${body.width}x${body.height}`
+                    });
+                    
+                    // Make it visible with bright yellow highlight
+                    const highlight = this.add.rectangle(obj.x, obj.y, body.width, body.height, 0xFFFF00, 0.7);
+                    highlight.setDepth(3000);
+                    highlight.setStrokeStyle(3, 0xFF0000);
+                    
+                    // Add debug label
+                    const label = this.add.text(obj.x, obj.y, `INVISIBLE:\n${obj.constructor.name}\n${obj.structureType || 'unknown'}\nTexture: ${obj.texture ? obj.texture.key : 'none'}`, {
+                        fontSize: '10px',
+                        fill: '#000000',
+                        fontFamily: 'Arial',
+                        backgroundColor: '#FFFF00',
+                        padding: { x: 3, y: 2 },
+                        align: 'center'
+                    });
+                    label.setOrigin(0.5);
+                    label.setDepth(3001);
+                    
+                    // Store references for cleanup
+                    if (!this.debugHighlights) this.debugHighlights = [];
+                    this.debugHighlights.push(highlight, label);
+                }
+            }
+        });
+        
+        // Also check sandbags list specifically
+        if (this.sandbagsList) {
+            console.log('\n🛡️ CHECKING SANDBAGS LIST:');
+            this.sandbagsList.forEach((sandbag, index) => {
+                if (sandbag) {
+                    console.log(`Sandbag ${index + 1}:`, {
+                        position: `(${sandbag.x}, ${sandbag.y})`,
+                        active: sandbag.active,
+                        isActive: sandbag.isActive,
+                        visible: sandbag.visible,
+                        alpha: sandbag.alpha,
+                        texture: sandbag.texture ? sandbag.texture.key : 'none',
+                        displaySize: `${sandbag.displayWidth}x${sandbag.displayHeight}`,
+                        bodyExists: !!sandbag.body,
+                        bodySize: sandbag.body ? `${sandbag.body.width}x${sandbag.body.height}` : 'none'
+                    });
+                    
+                    // Highlight problematic sandbags
+                    if (sandbag.alpha < 0.1 || !sandbag.visible || sandbag.displayWidth === 0) {
+                        const highlight = this.add.rectangle(sandbag.x, sandbag.y, 48, 32, 0x00FFFF, 0.8);
+                        highlight.setDepth(3000);
+                        highlight.setStrokeStyle(3, 0x0000FF);
+                        
+                        const label = this.add.text(sandbag.x, sandbag.y, `PROBLEM SANDBAG\nAlpha: ${sandbag.alpha}\nVisible: ${sandbag.visible}`, {
+                            fontSize: '9px',
+                            fill: '#000000',
+                            fontFamily: 'Arial',
+                            backgroundColor: '#00FFFF',
+                            padding: { x: 2, y: 1 },
+                            align: 'center'
+                        });
+                        label.setOrigin(0.5);
+                        label.setDepth(3001);
+                        
+                        if (!this.debugHighlights) this.debugHighlights = [];
+                        this.debugHighlights.push(highlight, label);
+                    }
+                }
+            });
+        }
+        
+        console.log(`\n📊 SUMMARY: Found ${foundInvisible} invisible physics bodies`);
+        if (foundInvisible > 0) {
+            console.log('🔧 To clear highlights: gameScene.clearDebugHighlights()');
+        } else {
+            console.log('✅ No invisible physics bodies found!');
+        }
+    }
+    
+    /**
+     * Clear debug highlights
+     */
+    clearDebugHighlights() {
+        if (this.debugHighlights) {
+            this.debugHighlights.forEach(highlight => {
+                if (highlight && highlight.destroy) {
+                    highlight.destroy();
+                }
+            });
+            this.debugHighlights = [];
+            console.log('🧹 Debug highlights cleared');
+        }
+    }
+    
+    /**
+     * Debug sandbag texture and creation issues
+     * Call from browser console: gameScene.debugSandbags()
+     */
+    debugSandbags() {
+        console.log('🛡️ DEBUGGING SANDBAG SYSTEM');
+        console.log('============================');
+        
+        // Check if sandbag texture is loaded
+        const sandbagTextureExists = this.textures.exists('sandbags');
+        console.log('🖼️ Sandbag texture exists:', sandbagTextureExists);
+        
+        if (sandbagTextureExists) {
+            const texture = this.textures.get('sandbags');
+            console.log('📊 Sandbag texture info:', {
+                key: texture.key,
+                width: texture.source[0].width,
+                height: texture.source[0].height,
+                hasImage: !!texture.source[0].image
+            });
+        } else {
+            console.error('❌ Sandbag texture is missing!');
+        }
+        
+        // Check sandbags list
+        if (this.sandbagsList) {
+            console.log(`\n🗂️ Sandbags list contains ${this.sandbagsList.length} items:`);
+            
+            this.sandbagsList.forEach((sandbag, index) => {
+                if (sandbag) {
+                    const info = {
+                        index: index + 1,
+                        position: `(${sandbag.x.toFixed(1)}, ${sandbag.y.toFixed(1)})`,
+                        active: sandbag.active,
+                        isActive: sandbag.isActive,
+                        visible: sandbag.visible,
+                        alpha: sandbag.alpha,
+                        textureKey: sandbag.texture ? sandbag.texture.key : 'NONE',
+                        displaySize: `${sandbag.displayWidth}x${sandbag.displayHeight}`,
+                        scaleX: sandbag.scaleX,
+                        scaleY: sandbag.scaleY,
+                        depth: sandbag.depth,
+                        tint: sandbag.tint ? `0x${sandbag.tint.toString(16)}` : 'none',
+                        usesFallback: sandbag.usesFallback || false,
+                        hasBody: !!sandbag.body,
+                        bodyInfo: sandbag.body ? {
+                            width: sandbag.body.width,
+                            height: sandbag.body.height,
+                            x: sandbag.body.x,
+                            y: sandbag.body.y,
+                            static: sandbag.body.isStatic,
+                            immovable: sandbag.body.immovable
+                        } : 'NO BODY'
+                    };
+                    
+                    console.log(`Sandbag ${index + 1}:`, info);
+                    
+                    // Identify potential problems
+                    const problems = [];
+                    if (!sandbag.active) problems.push('NOT_ACTIVE');
+                    if (!sandbag.isActive) problems.push('NOT_IS_ACTIVE');
+                    if (!sandbag.visible) problems.push('NOT_VISIBLE');
+                    if (sandbag.alpha < 0.1) problems.push('TRANSPARENT');
+                    if (sandbag.displayWidth === 0 || sandbag.displayHeight === 0) problems.push('ZERO_SIZE');
+                    if (!sandbag.texture || sandbag.texture.key === '__DEFAULT' || sandbag.texture.key === '__MISSING') problems.push('BAD_TEXTURE');
+                    if (sandbag.body && (sandbag.body.width === 0 || sandbag.body.height === 0)) problems.push('ZERO_BODY');
+                    
+                    if (problems.length > 0) {
+                        console.warn(`⚠️ Sandbag ${index + 1} has problems:`, problems.join(', '));
+                        
+                        // Highlight problematic sandbag
+                        const highlight = this.add.rectangle(sandbag.x, sandbag.y, 60, 40, 0xFF00FF, 0.8);
+                        highlight.setDepth(3000);
+                        highlight.setStrokeStyle(4, 0xFFFF00);
+                        
+                        const label = this.add.text(sandbag.x, sandbag.y, `PROBLEM SANDBAG ${index + 1}\n${problems.join('\n')}`, {
+                            fontSize: '8px',
+                            fill: '#000000',
+                            fontFamily: 'Arial',
+                            backgroundColor: '#FF00FF',
+                            padding: { x: 2, y: 1 },
+                            align: 'center'
+                        });
+                        label.setOrigin(0.5);
+                        label.setDepth(3001);
+                        
+                        if (!this.debugHighlights) this.debugHighlights = [];
+                        this.debugHighlights.push(highlight, label);
+                    }
+                } else {
+                    console.warn(`⚠️ Sandbag ${index + 1} is null/undefined`);
+                }
+            });
+        } else {
+            console.log('❌ No sandbags list found');
+        }
+        
+        console.log('\n🔧 To clear highlights: gameScene.clearDebugHighlights()');
+        console.log('🔧 To check all invisible bodies: gameScene.debugInvisibleBodies()');
     }
 }
 
