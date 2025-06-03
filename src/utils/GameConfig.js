@@ -46,11 +46,11 @@ export const GameConfig = {
         },
         nightmare: {
             zombiesFirstWave: 50,
-            zombiesWaveIncrement: 10,
+            zombiesWaveIncrement: 50,
             zombieSpawnDelay: 200,
             zombieHealthMultiplier: 1.2,
             zombieSpeedMultiplier: 1.0,
-            squadSize: 4,
+            squadSize: 5,
             playerHealthMultiplier: 1.0
         }
     },

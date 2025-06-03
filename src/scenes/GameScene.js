@@ -171,6 +171,9 @@ export class GameScene extends Phaser.Scene {
         // Initialize sandbags list
         this.sandbagsList = [];
         
+        // Initialize military crates list
+        this.militaryCrateList = [];
+        
         this.bloodSplats = this.add.group();
         this.shellCasings = this.add.group();
         
@@ -351,6 +354,7 @@ export class GameScene extends Phaser.Scene {
         console.log('🛡️ All game systems initialized, now creating sandbags...');
         try {
             this.createCrashSiteSandbags();
+            this.createCrashSiteMilitaryCrates();
         } catch (sandbagError) {
             console.error('❌ Error creating sandbags at end of create():', sandbagError);
         }
@@ -1400,6 +1404,30 @@ export class GameScene extends Phaser.Scene {
             });
         }
         
+        // Update military crates
+        if (this.militaryCrateList) {
+            this.militaryCrateList = this.militaryCrateList.filter(militaryCrate => {
+                if (!militaryCrate || typeof militaryCrate !== 'object') {
+                    return false;
+                }
+                
+                if (militaryCrate && militaryCrate.active && militaryCrate.isActive) {
+                    try {
+                        militaryCrate.update(time, delta);
+                        return true;
+                    } catch (updateError) {
+                        console.error('❌ Error updating military crate:', updateError);
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            });
+        }
+        
+        // Check for military crate collection
+        this.checkMilitaryCrateCollection();
+        
         // Update inventory hotbar
         this.updateInventoryHotbar();
         
@@ -2312,6 +2340,13 @@ export class GameScene extends Phaser.Scene {
         this.zombiesSpawned = 0;
         this.isWaveActive = true;
         
+        // Spawn random military crates with each wave (after wave 1)
+        if (window.gameState.wave > 1) {
+            const cratesPerWave = Math.min(window.gameState.wave - 1, 3); // 1-3 crates per wave
+            console.log(`📦 Spawning ${cratesPerWave} random crates for wave ${window.gameState.wave}`);
+            this.spawnRandomCrates(cratesPerWave);
+        }
+        
         
         window.updateUI.wave(window.gameState.wave);
         window.updateUI.zombiesLeft(this.zombiesInWave);
@@ -2353,6 +2388,15 @@ export class GameScene extends Phaser.Scene {
             this.zombies.children.entries.forEach(zombie => {
                 if (zombie && zombie.active) {
                     zombie.setDepth(zombie.y);
+                }
+            });
+        }
+        
+        // Update military crates depth
+        if (this.militaryCrateList) {
+            this.militaryCrateList.forEach(militaryCrate => {
+                if (militaryCrate && militaryCrate.active) {
+                    militaryCrate.setDepth(militaryCrate.y);
                 }
             });
         }
@@ -2530,6 +2574,7 @@ export class GameScene extends Phaser.Scene {
             const sentryCount = this.sentryGunsList ? this.sentryGunsList.length : 0;
             const barricadeCount = this.barricadesList ? this.barricadesList.length : 0;
             const sandbagCount = this.sandbagsList ? this.sandbagsList.length : 0;
+            const militaryCrateCount = this.militaryCrateList ? this.militaryCrateList.length : 0;
             const currentEquipment = this.player ? this.player.getCurrentSlotEquipment() : null;
             const equipmentInfo = currentEquipment ? `${currentEquipment.name}${currentEquipment.count !== undefined ? ` (${currentEquipment.count})` : ''}` : 'None';
             
@@ -2539,13 +2584,14 @@ export class GameScene extends Phaser.Scene {
                 `Sentry Guns: ${sentryCount}`,
                 `Barricades: ${barricadeCount}`,
                 `Sandbags: ${sandbagCount}`,
+                `Military Crates: ${militaryCrateCount}`,
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
                 `Score: ${window.gameState.score || 0}`,
                 '',
                 'Press 1: Machine Gun, 2: Sentry Gun, 3: Barricade',
                 'Press SPACE to shoot/place (Green=Valid, Red=Invalid)',
-                'Placement preview shows where items will be placed'
+                'Walk into crates to collect ammo, health, or barricades!'
             ].join('\n'));
         }
     }
@@ -4756,6 +4802,262 @@ export class GameScene extends Phaser.Scene {
         
         console.log('\n🔧 To clear highlights: gameScene.clearDebugHighlights()');
         console.log('🔧 To check all invisible bodies: gameScene.debugInvisibleBodies()');
+    }
+    
+    // === MILITARY CRATE SYSTEM ===
+    
+    checkMilitaryCrateCollection() {
+        if (!this.player || !this.militaryCrateList || this.militaryCrateList.length === 0) {
+            return;
+        }
+        
+        this.militaryCrateList.forEach(crate => {
+            if (crate && crate.active && crate.isCollectable && !crate.isCollected) {
+                // Check distance between player and crate
+                const distance = Phaser.Math.Distance.Between(
+                    this.player.x, this.player.y,
+                    crate.x, crate.y
+                );
+                
+                // Collection radius (larger for easier pickup)
+                const collectionRadius = 50;
+                
+                if (distance < collectionRadius) {
+                    const collected = crate.collectCrate(this.player);
+                    if (collected) {
+                        console.log('📦 Successfully collected crate');
+                        this.createCrateCollectionEffect(crate.x, crate.y);
+                    }
+                }
+            }
+        });
+    }
+    
+    createCrateCollectionEffect(x, y) {
+        const effect = this.add.circle(x, y, 30, 0x00FFFF, 0.6);
+        effect.setDepth(2000);
+        effect.setStrokeStyle(3, 0xFFFFFF, 0.8);
+        
+        this.tweens.add({
+            targets: effect,
+            scaleX: 2,
+            scaleY: 2,
+            alpha: 0,
+            duration: 600,
+            ease: 'Power2',
+            onComplete: () => effect.destroy()
+        });
+    }
+    
+    createCrashSiteMilitaryCrates() {
+        console.log('📦 Creating interactive military crates inside crash site...');
+        
+        if (!this.textures || !this.physics || !this.player) {
+            console.error('❌ Required game systems not ready for military crate creation');
+            return;
+        }
+        
+        if (!this.textures.exists('military_crate')) {
+            console.error('❌ MilitaryCrate texture not found, skipping creation');
+            return;
+        }
+        
+        console.log('✅ MilitaryCrate texture found, proceeding with creation');
+        
+        try {
+            const helicopterX = 1000;
+            const helicopterY = 750;
+            
+            const initialCratePositions = [
+                {x: helicopterX - 80, y: helicopterY - 120},
+                {x: helicopterX + 80, y: helicopterY + 120}
+            ];
+            
+            console.log(`📦 Attempting to create ${initialCratePositions.length} initial interactive crates...`);
+            let successfulMilitaryCrates = 0;
+            
+            initialCratePositions.forEach((pos, index) => {
+                try {
+                    const militaryCrate = new MilitaryCrate(this, pos.x, pos.y);
+                    
+                    if (!militaryCrate || !militaryCrate.active || !militaryCrate.isActive) {
+                        console.error('❌ MilitaryCrate creation failed at', pos.x, pos.y);
+                        return;
+                    }
+                    
+                    this.militaryCrateList.push(militaryCrate);
+                    successfulMilitaryCrates++;
+                    
+                    console.log(`✅ Military crate ${index + 1} placed successfully at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) with ${militaryCrate.contents.type}`);
+                    
+                } catch (crateError) {
+                    console.error(`❌ Error creating military crate ${index + 1}:`, crateError);
+                }
+            });
+            
+            console.log(`📦 Initial crate creation complete: ${successfulMilitaryCrates}/${initialCratePositions.length} successful`);
+            
+            if (successfulMilitaryCrates > 0) {
+                console.log(`✅ Created ${successfulMilitaryCrates} interactive military crates`);
+                console.log('📦 Players can walk into these crates to collect ammo, health, or barricades!');
+            }
+            
+        } catch (error) {
+            console.error('Error creating crash site military crates:', error);
+        }
+    }
+    
+    spawnRandomCrates(count = 2) {
+        if (!this.textures.exists('military_crate')) {
+            console.warn('❌ Cannot spawn random crates - military_crate texture not found');
+            return;
+        }
+        
+        console.log(`📦 Attempting to spawn ${count} random crates...`);
+        let successfulSpawns = 0;
+        const maxAttempts = 20;
+        
+        for (let i = 0; i < count; i++) {
+            let spawned = false;
+            
+            for (let attempt = 0; attempt < maxAttempts && !spawned; attempt++) {
+                const x = Phaser.Math.Between(200, GameConfig.world.width - 200);
+                const y = Phaser.Math.Between(200, GameConfig.world.height - 200);
+                
+                if (this.isValidCrateSpawnPosition(x, y)) {
+                    try {
+                        const crate = new MilitaryCrate(this, x, y);
+                        
+                        if (crate && crate.active && crate.isActive) {
+                            this.militaryCrateList.push(crate);
+                            successfulSpawns++;
+                            spawned = true;
+                            
+                            console.log(`📦 Spawned random crate at (${x}, ${y}) with ${crate.contents.type}`);
+                            this.createCrateSpawnEffect(x, y);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error spawning random crate:', error);
+                    }
+                }
+            }
+            
+            if (!spawned) {
+                console.warn(`⚠️ Failed to spawn random crate ${i + 1} after ${maxAttempts} attempts`);
+            }
+        }
+        
+        console.log(`📦 Random crate spawning complete: ${successfulSpawns}/${count} successful`);
+        return successfulSpawns;
+    }
+    
+    isValidCrateSpawnPosition(x, y, minDistance = 80) {
+        // Check world bounds with margin
+        if (x < 100 || x > GameConfig.world.width - 100 || 
+            y < 100 || y > GameConfig.world.height - 100) {
+            return false;
+        }
+        
+        // Check distance from player
+        const playerDistance = Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y);
+        if (playerDistance < minDistance) {
+            return false;
+        }
+        
+        // Check distance from existing military crates
+        if (this.militaryCrateList) {
+            for (const crate of this.militaryCrateList) {
+                if (crate && crate.active) {
+                    const distance = Phaser.Math.Distance.Between(x, y, crate.x, crate.y);
+                    if (distance < minDistance) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Check distance from structures
+        if (this.structures) {
+            for (const structure of this.structures.children.entries) {
+                const distance = Phaser.Math.Distance.Between(x, y, structure.x, structure.y);
+                if (distance < minDistance) {
+                    return false;
+                }
+            }
+        }
+        
+        // Check distance from sandbags
+        if (this.sandbagsList) {
+            for (const sandbag of this.sandbagsList) {
+                if (sandbag && sandbag.active && sandbag.isActive) {
+                    const distance = Phaser.Math.Distance.Between(x, y, sandbag.x, sandbag.y);
+                    if (distance < minDistance * 0.8) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Check distance from barricades
+        if (this.barricadesList) {
+            for (const barricade of this.barricadesList) {
+                if (barricade && barricade.active) {
+                    const distance = Phaser.Math.Distance.Between(x, y, barricade.x, barricade.y);
+                    if (distance < minDistance * 0.7) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        // Check distance from sentry guns
+        if (this.sentryGunsList) {
+            for (const sentryGun of this.sentryGunsList) {
+                if (sentryGun && sentryGun.active) {
+                    const distance = Phaser.Math.Distance.Between(x, y, sentryGun.x, sentryGun.y);
+                    if (distance < minDistance) {
+                        return false;
+                    }
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    createCrateSpawnEffect(x, y) {
+        const spawnEffect = this.add.circle(x, y, 40, 0xFFD700, 0.5);
+        spawnEffect.setDepth(1500);
+        spawnEffect.setStrokeStyle(4, 0xFFD700, 0.8);
+        
+        this.tweens.add({
+            targets: spawnEffect,
+            scaleX: 0.2,
+            scaleY: 0.2,
+            alpha: 0,
+            duration: 800,
+            ease: 'Back.easeIn',
+            onComplete: () => spawnEffect.destroy()
+        });
+        
+        // Add sparkle particles
+        for (let i = 0; i < 5; i++) {
+            const sparkle = this.add.circle(x, y, 2, 0xFFFFFF);
+            sparkle.setDepth(1600);
+            
+            const angle = (i / 5) * Math.PI * 2;
+            const distance = 30;
+            
+            this.tweens.add({
+                targets: sparkle,
+                x: x + Math.cos(angle) * distance,
+                y: y + Math.sin(angle) * distance,
+                alpha: 0,
+                duration: 600,
+                ease: 'Power2',
+                onComplete: () => sparkle.destroy()
+            });
+        }
     }
 }
 

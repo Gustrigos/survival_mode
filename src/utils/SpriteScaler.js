@@ -153,7 +153,7 @@ export class SpriteScaler {
         if (type.includes('helicopter') || type.includes('vehicle')) {
             return { targetWidth: 120, targetHeight: 80 };
         }
-        if (type.includes('crate') || type.includes('box')) {
+        if (type.includes('military_crate') || type.includes('box')) {
             return { targetWidth: 32, targetHeight: 32 };
         }
         if (type.includes('weapon') || type.includes('gun')) {
