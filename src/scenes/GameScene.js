@@ -12,6 +12,7 @@ import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
 import { TerrainOptimizer } from '../utils/TerrainOptimizer.js';
 import { SpriteScaler } from '../utils/SpriteScaler.js';
 import { GameConfig } from '../utils/GameConfig.js';
+import { SquadGenerator } from '../utils/SquadGenerator.js';
 import { WorldGenerator } from '../modules/WorldGenerator.js';
 
 export class GameScene extends Phaser.Scene {
@@ -375,6 +376,15 @@ export class GameScene extends Phaser.Scene {
             console.log('🔧 To disable debug for all NPCs: NPCPlayer.toggleAllDebug(gameScene, false)');
             console.log('🔧 To debug individual NPC: gameScene.squadMembers.children.entries[0].enableDebug()');
             console.log('🔧 Available NPCs: Charlie, Delta, Alpha, Bravo');
+            console.log('');
+            console.log('🎖️ DYNAMIC SQUAD SYSTEM:');
+            console.log('🔧 GameConfig.setCustomSquadSize(10) - Set 10 squad members');
+            console.log('🔧 GameConfig.setCustomSquadSize(20) - Set 20 squad members');
+            console.log('🔧 GameConfig.setCustomSquadSize(null) - Use difficulty default');
+            console.log('🔧 GameConfig.setDifficulty("apocalypse") - Test 20-member apocalypse mode');
+            console.log('🔧 GameConfig.previewSquadFormation(15) - Preview 15-member formation');
+            console.log('🔧 SquadGenerator.test(25) - Test squad generation with 25 members');
+            console.log('🔧 Current squad size:', GameConfig.getSquadSize(), 'members');
         }
         
         // Create inventory hotbar (Minecraft style)

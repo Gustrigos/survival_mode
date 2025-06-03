@@ -6,6 +6,8 @@
  * multiple source files.
  */
 
+import { SquadGenerator } from './SquadGenerator.js';
+
 export const GameConfig = {
     // === WORLD SETTINGS ===
     world: {
@@ -23,7 +25,7 @@ export const GameConfig = {
             zombieSpawnDelay: 800,
             zombieHealthMultiplier: 0.8,
             zombieSpeedMultiplier: 0.8,
-            squadSize: 4,
+            squadSize: 6,  // Easy mode gets more squad members
             playerHealthMultiplier: 1.2
         },
         normal: {
@@ -41,7 +43,7 @@ export const GameConfig = {
             zombieSpawnDelay: 300,
             zombieHealthMultiplier: 1.3,
             zombieSpeedMultiplier: 1.2,
-            squadSize: 3,
+            squadSize: 3,  // Hard mode gets fewer squad members
             playerHealthMultiplier: 0.8
         },
         nightmare: {
@@ -50,14 +52,39 @@ export const GameConfig = {
             zombieSpawnDelay: 200,
             zombieHealthMultiplier: 1.2,
             zombieSpeedMultiplier: 1.0,
-            squadSize: 5,
+            squadSize: 5,  // Nightmare gets moderate squad
             playerHealthMultiplier: 1.0
+        },
+        // New extreme difficulty modes for testing large squads
+        extreme: {
+            zombiesFirstWave: 75,
+            zombiesWaveIncrement: 8,
+            zombieSpawnDelay: 150,
+            zombieHealthMultiplier: 1.5,
+            zombieSpeedMultiplier: 1.3,
+            squadSize: 10,  // Large squad for extreme challenge
+            playerHealthMultiplier: 0.9
+        },
+        apocalypse: {
+            zombiesFirstWave: 50,
+            zombiesWaveIncrement: 50,
+            zombieSpawnDelay: 200,
+            zombieHealthMultiplier: 1.0,
+            zombieSpeedMultiplier: 1.0,
+            squadSize: 20,  // Massive squad for apocalypse mode
+            playerHealthMultiplier: 1.5
         }
     },
 
     // === CURRENT DIFFICULTY ===
     // Change this to switch difficulty presets, or set to 'custom' for manual settings
-    currentDifficulty: 'nightmare',
+    currentDifficulty: 'apocalypse',
+
+    // === CUSTOM SQUAD SIZE OVERRIDE ===
+    // Set this to override the difficulty-based squad size
+    // Useful for testing or personal preference
+    // Set to null to use difficulty default, or any number (0-50+)
+    customSquadSize: null,
 
     // === WAVE SETTINGS ===
     waves: {
@@ -82,18 +109,36 @@ export const GameConfig = {
         // Equipment starting inventory
         startingEquipment: {
             1: { id: 'machineGun', type: 'weapon', name: 'Machine Gun', icon: 'weapon_icon', ammo: 30 },
-            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_icon', count: 3 },
-            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade_icon', count: 5 }
+            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_icon', count: 6 },
+            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade_icon', count: 6 }
         }
     },
 
     // === SQUAD/NPC SETTINGS ===
     squad: {
-        // Number of squad members (0-5 recommended)
-        size: 4,
+        // DYNAMIC SQUAD SYSTEM - No longer requires manual member definitions!
+        // Squad size and members are now generated automatically by SquadGenerator
         
-        // Squad member configurations
+        // Enable dynamic squad generation
+        useDynamicGeneration: true,
+        
+        // Base stats for generated squad members (can be overridden by difficulty)
+        baseStats: {
+            aggroRange: 280,
+            followDistance: 60,
+            maxSeparation: 220,
+            health: 80,
+            damage: 25
+        },
+        
+        // Formation preferences
+        formationStyle: 'auto', // 'auto', 'line', 'grid', 'diamond'
+        
+        // Legacy manual squad configuration (kept for compatibility, but not used by default)
+        legacyMode: false,
+        size: 4,  // Only used if legacyMode is true or SquadGenerator fails
         members: [
+            // Original manual configurations (kept as fallback)
             {
                 name: 'Charlie',
                 color: 0x0099ff,
@@ -137,17 +182,6 @@ export const GameConfig = {
                 maxSeparation: 200,
                 health: 80,
                 damage: 30
-            },
-            {
-                name: 'Echo',
-                color: 0xaa44ff,
-                formationOffset: { x: 0, y: 60 },
-                weapon: 'pistol',
-                aggroRange: 270,
-                followDistance: 65,
-                maxSeparation: 210,
-                health: 80,
-                damage: 25
             }
         ]
     },
@@ -328,19 +362,61 @@ export const GameConfig = {
     },
 
     /**
-     * Get squad configuration with difficulty applied
+     * Get squad configuration with dynamic generation or legacy fallback
      */
     getSquadConfig() {
         const difficulty = this.getDifficulty();
+        const squadSize = this.getSquadSize();
+        
+        // Use dynamic generation if enabled and SquadGenerator is available
+        if (this.squad.useDynamicGeneration && typeof SquadGenerator !== 'undefined') {
+            try {
+                console.log(`🎖️ Using dynamic squad generation for ${squadSize} members (${this.currentDifficulty} difficulty)`);
+                return SquadGenerator.generateDifficultySquad(this.currentDifficulty, squadSize);
+            } catch (error) {
+                console.warn('⚠️ Dynamic squad generation failed, falling back to legacy mode:', error);
+                return this.getLegacySquadConfig();
+            }
+        } else {
+            return this.getLegacySquadConfig();
+        }
+    },
+
+    /**
+     * Get the effective squad size (considers custom override and difficulty)
+     */
+    getSquadSize() {
+        // Custom override takes highest priority
+        if (this.customSquadSize !== null && typeof this.customSquadSize === 'number') {
+            return Math.max(0, Math.min(50, this.customSquadSize)); // Clamp between 0-50
+        }
+        
+        // Use difficulty-based size
+        const difficulty = this.getDifficulty();
+        if (difficulty && difficulty.squadSize !== undefined) {
+            return difficulty.squadSize;
+        }
+        
+        // Fallback to base squad size
+        return this.squad.size || 4;
+    },
+
+    /**
+     * Legacy squad configuration (for compatibility)
+     */
+    getLegacySquadConfig() {
+        const difficulty = this.getDifficulty();
+        const squadSize = this.getSquadSize();
         const base = this.squad;
         
-        if (!difficulty) return base; // Use base values for custom difficulty
+        console.log(`🎖️ Using legacy squad configuration for ${squadSize} members`);
         
-        // Return only the number of squad members based on difficulty
+        // Return only the number of squad members available in manual config
+        const availableMembers = Math.min(squadSize, base.members.length);
+        
         return {
-            ...base,
-            size: Math.min(difficulty.squadSize, base.members.length),
-            members: base.members.slice(0, difficulty.squadSize)
+            size: availableMembers,
+            members: base.members.slice(0, availableMembers)
         };
     },
 
@@ -351,9 +427,28 @@ export const GameConfig = {
         if (this.difficultyPresets[difficultyName]) {
             this.currentDifficulty = difficultyName;
             console.log(`🎯 Difficulty changed to: ${difficultyName.toUpperCase()}`);
+            const squadSize = this.getSquadSize();
+            console.log(`🎖️ Squad size for this difficulty: ${squadSize} members`);
             return true;
         }
         console.warn(`Unknown difficulty: ${difficultyName}`);
+        return false;
+    },
+
+    /**
+     * Set custom squad size (overrides difficulty-based size)
+     */
+    setCustomSquadSize(size) {
+        if (typeof size === 'number' && size >= 0 && size <= 50) {
+            this.customSquadSize = size;
+            console.log(`🎖️ Custom squad size set to: ${size} members`);
+            return true;
+        } else if (size === null) {
+            this.customSquadSize = null;
+            console.log(`🎖️ Custom squad size cleared, using difficulty-based size`);
+            return true;
+        }
+        console.warn(`Invalid squad size: ${size}. Must be 0-50 or null.`);
         return false;
     },
 
@@ -362,6 +457,19 @@ export const GameConfig = {
      */
     getDifficultyNames() {
         return Object.keys(this.difficultyPresets);
+    },
+
+    /**
+     * Quick squad size preview
+     */
+    previewSquadFormation(size = null) {
+        const squadSize = size || this.getSquadSize();
+        if (typeof SquadGenerator !== 'undefined') {
+            return SquadGenerator.getFormationPreview(squadSize);
+        } else {
+            console.warn('SquadGenerator not available for preview');
+            return [];
+        }
     }
 };
 
@@ -369,7 +477,12 @@ export const GameConfig = {
 if (typeof window !== 'undefined') {
     window.GameConfig = GameConfig;
     console.log('🎮 GameConfig loaded! Available commands:');
-    console.log('  GameConfig.setDifficulty("easy|normal|hard|nightmare")');
+    console.log('  GameConfig.setDifficulty("easy|normal|hard|nightmare|extreme|apocalypse")');
+    console.log('  GameConfig.setCustomSquadSize(10) - Set custom squad size');
+    console.log('  GameConfig.setCustomSquadSize(null) - Use difficulty default');
+    console.log('  GameConfig.previewSquadFormation() - Preview current formation');
+    console.log('  GameConfig.previewSquadFormation(15) - Preview specific size');
     console.log('  GameConfig.getDifficultyNames()');
     console.log('  GameConfig.currentDifficulty =', GameConfig.currentDifficulty);
+    console.log('  Current squad size:', GameConfig.getSquadSize(), 'members');
 } 

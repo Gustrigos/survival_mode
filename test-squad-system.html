@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Squad System Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border: 1px solid #00ff00;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .test-button {
+            background: #003300;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 15px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            border-radius: 3px;
+        }
+        .test-button:hover {
+            background: #005500;
+        }
+        .output {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            padding: 10px;
+            margin: 10px 0;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .status {
+            color: #ffff00;
+            font-weight: bold;
+        }
+        .success {
+            color: #00ff00;
+        }
+        .error {
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎖️ Dynamic Squad System Test</h1>
+        <p>This page tests the new dynamic squad generation system without running the full game.</p>
+        
+        <div class="test-section">
+            <h3>📋 Quick Tests</h3>
+            <button class="test-button" onclick="testBasicGeneration()">Test Basic Generation</button>
+            <button class="test-button" onclick="testLargeSquad()">Test Large Squad (15 members)</button>
+            <button class="test-button" onclick="testMassiveSquad()">Test Massive Squad (25 members)</button>
+            <button class="test-button" onclick="testFormations()">Test All Formation Types</button>
+            <button class="test-button" onclick="testDifficultyModes()">Test Difficulty Modes</button>
+            <button class="test-button" onclick="clearOutput()">Clear Output</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎯 Custom Tests</h3>
+            <label>Squad Size: </label>
+            <input type="number" id="customSize" value="10" min="1" max="50" style="background: #333; color: #fff; border: 1px solid #666; padding: 5px;">
+            <button class="test-button" onclick="testCustomSize()">Generate Custom Squad</button>
+            <br><br>
+            <label>Difficulty: </label>
+            <select id="difficultySelect" style="background: #333; color: #fff; border: 1px solid #666; padding: 5px;">
+                <option value="easy">Easy (6 members)</option>
+                <option value="normal">Normal (4 members)</option>
+                <option value="hard">Hard (3 members)</option>
+                <option value="nightmare" selected>Nightmare (5 members)</option>
+                <option value="extreme">Extreme (10 members)</option>
+                <option value="apocalypse">Apocalypse (20 members)</option>
+            </select>
+            <button class="test-button" onclick="testDifficulty()">Test Difficulty</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Output</h3>
+            <div id="output" class="output">Ready to test dynamic squad system...\n</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔧 Console Commands</h3>
+            <p>Open browser console (F12) and try these commands:</p>
+            <code>
+                SquadGenerator.test(15)<br>
+                SquadGenerator.getFormationPreview(20)<br>
+                GameConfig.setCustomSquadSize(12)<br>
+                GameConfig.setDifficulty("apocalypse")<br>
+            </code>
+        </div>
+    </div>
+
+    <!-- Import the squad system modules -->
+    <script type="module">
+        // Import modules
+        import { SquadGenerator } from './src/utils/SquadGenerator.js';
+        import { GameConfig } from './src/utils/GameConfig.js';
+        
+        // Make available globally for testing
+        window.SquadGenerator = SquadGenerator;
+        window.GameConfig = GameConfig;
+        
+        let output = document.getElementById('output');
+        
+        function log(message, type = 'normal') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'status' ? 'status' : '';
+            const prefix = type === 'error' ? '❌ ' : type === 'success' ? '✅ ' : type === 'status' ? '🎯 ' : '';
+            
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${prefix}${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        window.testBasicGeneration = function() {
+            log('Testing basic squad generation...', 'status');
+            try {
+                const config = SquadGenerator.generateSquadConfig(5);
+                log(`✓ Generated ${config.size} squad members`);
+                config.members.forEach((member, i) => {
+                    log(`  ${i+1}. ${member.name} (${member.weapon}) - Health: ${member.health}, Damage: ${member.damage}`);
+                });
+                log('Basic generation test completed', 'success');
+            } catch (error) {
+                log(`Error in basic generation: ${error.message}`, 'error');
+            }
+        };
+        
+        window.testLargeSquad = function() {
+            log('Testing large squad (15 members)...', 'status');
+            try {
+                const config = SquadGenerator.generateSquadConfig(15);
+                log(`✓ Generated ${config.size} squad members in formation`);
+                log('Formation positions:');
+                config.members.forEach((member, i) => {
+                    const pos = member.formationOffset;
+                    log(`  ${member.name}: (${pos.x}, ${pos.y})`);
+                });
+                log('Large squad test completed', 'success');
+            } catch (error) {
+                log(`Error in large squad test: ${error.message}`, 'error');
+            }
+        };
+        
+        window.testMassiveSquad = function() {
+            log('Testing massive squad (25 members)...', 'status');
+            try {
+                SquadGenerator.getFormationPreview(25);
+                log('✓ Generated 25-member formation preview (check console for details)');
+                log('Massive squad test completed', 'success');
+            } catch (error) {
+                log(`Error in massive squad test: ${error.message}`, 'error');
+            }
+        };
+        
+        window.testFormations = function() {
+            log('Testing different formation types...', 'status');
+            const sizes = [3, 6, 12, 20];
+            sizes.forEach(size => {
+                try {
+                    const positions = SquadGenerator.generateFormationPositions(size);
+                    log(`✓ ${size} members: ${positions.length} positions generated`);
+                } catch (error) {
+                    log(`✗ ${size} members: ${error.message}`, 'error');
+                }
+            });
+            log('Formation tests completed', 'success');
+        };
+        
+        window.testDifficultyModes = function() {
+            log('Testing all difficulty modes...', 'status');
+            const difficulties = ['easy', 'normal', 'hard', 'nightmare', 'extreme', 'apocalypse'];
+            difficulties.forEach(difficulty => {
+                try {
+                    const config = SquadGenerator.generateDifficultySquad(difficulty);
+                    log(`✓ ${difficulty}: ${config.size} members`);
+                } catch (error) {
+                    log(`✗ ${difficulty}: ${error.message}`, 'error');
+                }
+            });
+            log('Difficulty mode tests completed', 'success');
+        };
+        
+        window.testCustomSize = function() {
+            const size = parseInt(document.getElementById('customSize').value);
+            log(`Testing custom squad size: ${size}...`, 'status');
+            try {
+                const config = SquadGenerator.generateSquadConfig(size);
+                log(`✓ Generated ${config.size} squad members`);
+                log(`Names: ${config.members.map(m => m.name).join(', ')}`);
+                log('Custom size test completed', 'success');
+            } catch (error) {
+                log(`Error in custom size test: ${error.message}`, 'error');
+            }
+        };
+        
+        window.testDifficulty = function() {
+            const difficulty = document.getElementById('difficultySelect').value;
+            log(`Testing difficulty: ${difficulty}...`, 'status');
+            try {
+                GameConfig.setDifficulty(difficulty);
+                const squadSize = GameConfig.getSquadSize();
+                log(`✓ ${difficulty} difficulty set, squad size: ${squadSize}`);
+                
+                const config = GameConfig.getSquadConfig();
+                log(`✓ Generated squad: ${config.members.map(m => m.name).join(', ')}`);
+                log('Difficulty test completed', 'success');
+            } catch (error) {
+                log(`Error in difficulty test: ${error.message}`, 'error');
+            }
+        };
+        
+        window.clearOutput = function() {
+            output.innerHTML = 'Output cleared...\n';
+        };
+        
+        // Initialize
+        log('Dynamic Squad System Test loaded successfully!', 'success');
+        log('SquadGenerator and GameConfig are available globally.', 'status');
+        log('Click the test buttons above or use the console commands.', 'status');
+    </script>
+</body>
+</html> 
