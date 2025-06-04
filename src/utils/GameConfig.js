@@ -66,12 +66,12 @@ export const GameConfig = {
             playerHealthMultiplier: 0.9
         },
         apocalypse: {
-            zombiesFirstWave: 50,
-            zombiesWaveIncrement: 50,
-            zombieSpawnDelay: 200,
+            zombiesFirstWave: 25,
+            zombiesWaveIncrement: 25,
+            zombieSpawnDelay: 250,
             zombieHealthMultiplier: 1.0,
             zombieSpeedMultiplier: 1.0,
-            squadSize: 20,  // Massive squad for apocalypse mode
+            squadSize: 10, 
             playerHealthMultiplier: 1.5
         }
     },
@@ -114,7 +114,7 @@ export const GameConfig = {
         }
     },
 
-    // === SQUAD/NPC SETTINGS ===
+    // === SQUAD/NPC SETTINGS ===w
     squad: {
         // DYNAMIC SQUAD SYSTEM - No longer requires manual member definitions!
         // Squad size and members are now generated automatically by SquadGenerator

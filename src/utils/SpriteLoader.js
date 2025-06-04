@@ -192,6 +192,9 @@ export class SpriteLoader {
         scene.load.image('tent', 'src/assets/sprites/environment/tent.png');
         scene.load.image('campfire', 'src/assets/sprites/environment/campfire.png');
         scene.load.image('debris', 'src/assets/sprites/environment/debris.png');
+        
+        // Fog of war sprite for exploration mechanics
+        scene.load.image('sand_fog', 'src/assets/sprites/environment/sand_fog.png');
     }
     
     static loadTerrainSprites(scene) {

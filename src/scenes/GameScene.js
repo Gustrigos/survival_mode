@@ -21,6 +21,13 @@ export class GameScene extends Phaser.Scene {
         this.worldGenerator = new WorldGenerator();
         this.generatedWorld = null;
         this.useWorldGeneration = false;
+        
+        // === FOG OF WAR SYSTEM ===
+        this.fogGrid = new Map(); // Stores fog tiles by grid coordinates 
+        this.exploredTiles = new Set(); // Tracks which tiles have been explored
+        this.fogTileSize = 64; // Should match terrain tile size
+        this.discoveryRadius = 100; // Increased for slightly more visibility (was 80)
+        this.fogDepth = 1800; // Render fog above all game objects but below UI
     }
 
     preload() {
@@ -186,6 +193,9 @@ export class GameScene extends Phaser.Scene {
         
         // Create detailed crash site background and structures
         this.createCrashSiteMap();
+        
+        // Initialize fog of war system
+        this.initializeFogOfWar();
         
         // Create player in appropriate starting area
         console.log('Creating player...');
@@ -385,6 +395,13 @@ export class GameScene extends Phaser.Scene {
             console.log('🔧 GameConfig.previewSquadFormation(15) - Preview 15-member formation');
             console.log('🔧 SquadGenerator.test(25) - Test squad generation with 25 members');
             console.log('🔧 Current squad size:', GameConfig.getSquadSize(), 'members');
+            console.log('');
+            console.log('🌫️ FOG OF WAR SYSTEM:');
+            console.log('🔧 gameScene.clearFogOfWar() - Remove all fog instantly');
+            console.log('🔧 gameScene.fogGrid.size - Check how many fog tiles remain');
+            console.log('🔧 gameScene.exploredTiles.size - Check how many areas discovered');
+            console.log('🔧 gameScene.generateSeamlessFogTexture() - Regenerate seamless fog');
+            console.log('🔧 Current fog tiles:', this.fogGrid.size, '| Explored areas:', this.exploredTiles.size);
         }
         
         // Create inventory hotbar (Minecraft style)
@@ -1323,6 +1340,9 @@ export class GameScene extends Phaser.Scene {
                 this.player.nameTag.y = this.player.y - 40;
             }
         }
+        
+        // Update fog of war discovery system
+        this.updateFogOfWar();
         
         // Handle input
         this.handleInput();
@@ -2598,6 +2618,7 @@ export class GameScene extends Phaser.Scene {
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
                 `Score: ${window.gameState.score || 0}`,
+                `Fog: ${this.fogGrid ? this.fogGrid.size : 0} tiles | Explored: ${this.exploredTiles ? this.exploredTiles.size : 0}`,
                 '',
                 'Press 1: Machine Gun, 2: Sentry Gun, 3: Barricade',
                 'Press SPACE to shoot/place (Green=Valid, Red=Invalid)',
@@ -5068,6 +5089,283 @@ export class GameScene extends Phaser.Scene {
                 onComplete: () => sparkle.destroy()
             });
         }
+    }
+    
+    // === FOG OF WAR SYSTEM ===
+    
+    /**
+     * Initialize the fog of war system by placing fog tiles across the world
+     */
+    initializeFogOfWar() {
+        console.log('🌫️ Initializing fog of war system...');
+        
+        // Check if fog sprite exists
+        if (!this.textures.exists('sand_fog')) {
+            console.warn('❌ sand_fog.png sprite not found, skipping fog of war');
+            return;
+        }
+        
+        console.log('✅ sand_fog.png sprite found, creating fog grid...');
+        
+        // Generate seamless fog texture for better tiling
+        this.generateSeamlessFogTexture();
+        
+        const worldWidth = GameConfig.world.width;
+        const worldHeight = GameConfig.world.height;
+        const tileSize = this.fogTileSize;
+        
+        // Define the safe spawn area around helicopter crash site (no fog)
+        const helicopterX = 1000;
+        const helicopterY = 750;
+        const safeRadius = 200; // Initial explored area around crash site
+        
+        let fogTilesCreated = 0;
+        
+        // Create fog tiles across the entire world
+        for (let x = 0; x < worldWidth; x += tileSize) {
+            for (let y = 0; y < worldHeight; y += tileSize) {
+                const centerX = x + tileSize / 2;
+                const centerY = y + tileSize / 2;
+                
+                // Don't place fog in the initial safe area around crash site
+                const distanceFromCrash = Phaser.Math.Distance.Between(
+                    centerX, centerY, helicopterX, helicopterY
+                );
+                
+                if (distanceFromCrash > safeRadius) {
+                    this.createFogTile(centerX, centerY);
+                    fogTilesCreated++;
+                } else {
+                    // Mark safe area as already explored
+                    const gridKey = this.getFogKey(centerX, centerY);
+                    this.exploredTiles.add(gridKey);
+                }
+            }
+        }
+        
+        console.log(`🌫️ Fog of war initialized: ${fogTilesCreated} fog tiles created`);
+        console.log(`🌫️ Safe area radius: ${safeRadius}px around helicopter crash site`);
+        console.log(`🌫️ Discovery radius: ${this.discoveryRadius}px`);
+        console.log(`🌫️ Enhanced fog with seamless textures and randomization for smooth borders`);
+    }
+    
+    /**
+     * Generate a seamless fog texture for better tiling
+     */
+    generateSeamlessFogTexture() {
+        try {
+            console.log('🌫️ Generating seamless fog texture...');
+            
+            // Use TerrainOptimizer to create seamless fog texture
+            if (typeof TerrainOptimizer !== 'undefined' && TerrainOptimizer.createSeamlessTexture) {
+                const seamlessFogKey = 'sand_fog_seamless';
+                
+                // Generate seamless version of the fog texture
+                TerrainOptimizer.createSeamlessTexture(this, 'sand_fog', seamlessFogKey, {
+                    targetSize: this.fogTileSize,
+                    seamlessBlendWidth: 8, // Blend 8 pixels on edges for smooth tiling
+                    useNearestFilter: false // Use smooth filtering for fog
+                });
+                
+                console.log('✅ Seamless fog texture generated:', seamlessFogKey);
+                this.seamlessFogTextureKey = seamlessFogKey;
+            } else {
+                console.log('⚠️ TerrainOptimizer not available, using original fog texture');
+                this.seamlessFogTextureKey = 'sand_fog';
+            }
+        } catch (error) {
+            console.warn('⚠️ Failed to generate seamless fog texture:', error);
+            this.seamlessFogTextureKey = 'sand_fog';
+        }
+    }
+    
+    /**
+     * Create a single fog tile at the specified position
+     */
+    createFogTile(x, y) {
+        try {
+            // Use seamless fog texture if available, otherwise fallback to original
+            const fogTextureKey = this.seamlessFogTextureKey || 'sand_fog';
+            const fogTile = this.add.image(x, y, fogTextureKey);
+            
+            // Apply scaling using SpriteScaler first
+            SpriteScaler.autoScale(fogTile, fogTextureKey, { maintainAspectRatio: false });
+            
+            // Scale to eliminate transparent borders but slightly overlap for smoother blending
+            const oversizeMultiplier = 1.6; // Further reduced for better blending
+            fogTile.setDisplaySize(
+                this.fogTileSize * oversizeMultiplier, 
+                this.fogTileSize * oversizeMultiplier
+            );
+            
+            // Add slight random rotation to break up the grid pattern (very subtle)
+            const randomRotation = (Math.random() - 0.5) * 0.05; // ±1.4 degrees
+            fogTile.setRotation(randomRotation);
+            
+            // Add very subtle random offset to break perfect grid alignment
+            const offsetVariation = 3; // Increased slightly for better distribution
+            const randomOffsetX = (Math.random() - 0.5) * offsetVariation;
+            const randomOffsetY = (Math.random() - 0.5) * offsetVariation;
+            fogTile.x += randomOffsetX;
+            fogTile.y += randomOffsetY;
+            
+            // Add subtle tint variation for more natural look
+            const tintVariation = 0.05; // 5% variation
+            const tintValue = 1.0 - (Math.random() * tintVariation);
+            const tintColor = Phaser.Display.Color.GetColor(
+                Math.floor(255 * tintValue),
+                Math.floor(255 * tintValue), 
+                Math.floor(255 * tintValue)
+            );
+            fogTile.setTint(tintColor);
+            
+            // Set fog tile properties
+            fogTile.setDepth(this.fogDepth);
+            fogTile.setAlpha(0.98); // Slightly more opaque for better coverage
+            
+            
+            // Store in fog grid for efficient lookup
+            const gridKey = this.getFogKey(x, y);
+            this.fogGrid.set(gridKey, fogTile);
+            
+            return fogTile;
+        } catch (error) {
+            console.error('❌ Error creating fog tile at', x, y, ':', error);
+            return null;
+        }
+    }
+    
+    /**
+     * Update fog of war based on player position (called in update loop)
+     */
+    updateFogOfWar() {
+        if (!this.player || this.fogGrid.size === 0) {
+            return;
+        }
+        
+        // Check for new areas to discover around player
+        this.discoverArea(this.player.x, this.player.y, this.discoveryRadius);
+        
+        // Also check around squad members for discovery
+        if (this.squadMembers) {
+            this.squadMembers.children.entries.forEach(squadMember => {
+                if (squadMember && squadMember.active) {
+                    this.discoverArea(squadMember.x, squadMember.y, this.discoveryRadius * 0.8);
+                }
+            });
+        }
+    }
+    
+    /**
+     * Discover fog tiles within a radius of the given position
+     */
+    discoverArea(centerX, centerY, radius) {
+        const tileSize = this.fogTileSize;
+        const tilesInRadius = Math.ceil(radius / tileSize);
+        
+        // Check tiles in a square around the center position
+        for (let dx = -tilesInRadius; dx <= tilesInRadius; dx++) {
+            for (let dy = -tilesInRadius; dy <= tilesInRadius; dy++) {
+                const tileX = Math.round(centerX / tileSize) * tileSize + (tileSize / 2);
+                const tileY = Math.round(centerY / tileSize) * tileSize + (tileSize / 2);
+                
+                const checkX = tileX + (dx * tileSize);
+                const checkY = tileY + (dy * tileSize);
+                
+                // Check if this tile is within the discovery radius
+                const distance = Phaser.Math.Distance.Between(centerX, centerY, checkX, checkY);
+                
+                if (distance <= radius) {
+                    const gridKey = this.getFogKey(checkX, checkY);
+                    
+                    // Only process if not already explored
+                    if (!this.exploredTiles.has(gridKey)) {
+                        this.exploredTiles.add(gridKey);
+                        
+                        // Remove fog tile if it exists
+                        const fogTile = this.fogGrid.get(gridKey);
+                        if (fogTile && fogTile.active) {
+                            this.createDiscoveryEffect(checkX, checkY);
+                            
+                            // Animate fog removal
+                            this.tweens.add({
+                                targets: fogTile,
+                                alpha: 0,
+                                duration: 800,
+                                ease: 'Power2.easeOut',
+                                onComplete: () => {
+                                    if (fogTile && fogTile.active) {
+                                        fogTile.destroy();
+                                    }
+                                    this.fogGrid.delete(gridKey);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Create a visual effect when an area is discovered
+     */
+    createDiscoveryEffect(x, y) {
+        // Subtle but visible discovery effect - expanding circle
+        const effect = this.add.circle(x, y, 12, 0xFFFFAA, 0.6);
+        effect.setDepth(this.fogDepth + 1);
+        
+        this.tweens.add({
+            targets: effect,
+            scaleX: 2.5,
+            scaleY: 2.5,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Power2.easeOut',
+            onComplete: () => {
+                if (effect && effect.active) {
+                    effect.destroy();
+                }
+            }
+        });
+    }
+    
+    /**
+     * Generate a unique key for fog grid based on tile position
+     */
+    getFogKey(x, y) {
+        const tileSize = this.fogTileSize;
+        const gridX = Math.round(x / tileSize);
+        const gridY = Math.round(y / tileSize);
+        return `${gridX},${gridY}`;
+    }
+    
+    /**
+     * Clear all fog of war (debug method)
+     * Can be called from console: gameScene.clearFogOfWar()
+     */
+    clearFogOfWar() {
+        console.log('🌫️ Clearing all fog of war...');
+        
+        this.fogGrid.forEach((fogTile, gridKey) => {
+            if (fogTile && fogTile.active) {
+                this.tweens.add({
+                    targets: fogTile,
+                    alpha: 0,
+                    duration: 200,
+                    onComplete: () => {
+                        if (fogTile && fogTile.active) {
+                            fogTile.destroy();
+                        }
+                    }
+                });
+            }
+        });
+        
+        this.fogGrid.clear();
+        this.exploredTiles.clear();
+        
+        console.log('✅ All fog cleared');
     }
 }
 

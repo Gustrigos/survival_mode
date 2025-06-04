@@ -63,7 +63,10 @@ export class SpriteScaler {
         rubble: { targetWidth: 64, targetHeight: 64 },
         dirt_texture: { targetWidth: 64, targetHeight: 64 },
         stone_texture: { targetWidth: 64, targetHeight: 64 },
-        water_texture: { targetWidth: 64, targetHeight: 64 }
+        water_texture: { targetWidth: 64, targetHeight: 64 },
+        
+        // Fog of war sprite - matches terrain tile size for seamless coverage
+        sand_fog: { targetWidth: 64, targetHeight: 64 }
     };
     
     /**
