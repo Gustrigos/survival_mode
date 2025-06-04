@@ -28,6 +28,12 @@ export class GameScene extends Phaser.Scene {
         this.fogTileSize = 64; // Should match terrain tile size
         this.discoveryRadius = 100; // Increased for slightly more visibility (was 80)
         this.fogDepth = 1800; // Render fog above all game objects but below UI
+        
+        // === DYNAMIC FOG REGENERATION SYSTEM ===
+        this.lastVisitedTimes = new Map(); // Track when each area was last visited
+        this.fogDecayTime = 45000; // 45 seconds before areas start to re-fog
+        this.fogRegenerationRate = 2000; // Check for regeneration every 2 seconds
+        this.lastFogRegenCheck = 0;
     }
 
     preload() {
@@ -400,8 +406,10 @@ export class GameScene extends Phaser.Scene {
             console.log('🔧 gameScene.clearFogOfWar() - Remove all fog instantly');
             console.log('🔧 gameScene.fogGrid.size - Check how many fog tiles remain');
             console.log('🔧 gameScene.exploredTiles.size - Check how many areas discovered');
+            console.log('🔧 gameScene.lastVisitedTimes.size - Check tracked areas for regeneration');
             console.log('🔧 gameScene.generateSeamlessFogTexture() - Regenerate seamless fog');
             console.log('🔧 Current fog tiles:', this.fogGrid.size, '| Explored areas:', this.exploredTiles.size);
+            console.log('🔧 DYNAMIC FOG: Areas re-fog after 45 seconds without visits - prevents wave 1 scouting exploit');
         }
         
         // Create inventory hotbar (Minecraft style)
@@ -2618,7 +2626,7 @@ export class GameScene extends Phaser.Scene {
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
                 `Wave: ${window.gameState.wave || 1}`,
                 `Score: ${window.gameState.score || 0}`,
-                `Fog: ${this.fogGrid ? this.fogGrid.size : 0} tiles | Explored: ${this.exploredTiles ? this.exploredTiles.size : 0}`,
+                `Fog: ${this.fogGrid ? this.fogGrid.size : 0} tiles | Explored: ${this.exploredTiles ? this.exploredTiles.size : 0} | Tracked areas: ${this.lastVisitedTimes ? this.lastVisitedTimes.size : 0}`,
                 '',
                 'Press 1: Machine Gun, 2: Sentry Gun, 3: Barricade',
                 'Press SPACE to shoot/place (Green=Valid, Red=Invalid)',
@@ -5246,13 +5254,21 @@ export class GameScene extends Phaser.Scene {
         // Check for new areas to discover around player
         this.discoverArea(this.player.x, this.player.y, this.discoveryRadius);
         
-        // Also check around squad members for discovery
-        if (this.squadMembers) {
-            this.squadMembers.children.entries.forEach(squadMember => {
-                if (squadMember && squadMember.active) {
-                    this.discoverArea(squadMember.x, squadMember.y, this.discoveryRadius * 0.8);
-                }
-            });
+        // Squad members no longer discover fog - only the player can scout
+        // Removed squad member fog discovery to make scouting a player-only activity
+        // if (this.squadMembers) {
+        //     this.squadMembers.children.entries.forEach(squadMember => {
+        //         if (squadMember && squadMember.active) {
+        //             this.discoverArea(squadMember.x, squadMember.y, this.discoveryRadius * 0.8);
+        //         }
+        //     });
+        // }
+        
+        // === DYNAMIC FOG REGENERATION ===
+        // Gradually re-fog areas that haven't been visited recently
+        if (this.time.now - this.lastFogRegenCheck > this.fogRegenerationRate) {
+            this.regenerateOldFog();
+            this.lastFogRegenCheck = this.time.now;
         }
     }
     
@@ -5277,6 +5293,9 @@ export class GameScene extends Phaser.Scene {
                 
                 if (distance <= radius) {
                     const gridKey = this.getFogKey(checkX, checkY);
+                    
+                    // === DYNAMIC FOG: Track visit time for regeneration system ===
+                    this.lastVisitedTimes.set(gridKey, this.time.now);
                     
                     // Only process if not already explored
                     if (!this.exploredTiles.has(gridKey)) {
@@ -5366,6 +5385,93 @@ export class GameScene extends Phaser.Scene {
         this.exploredTiles.clear();
         
         console.log('✅ All fog cleared');
+    }
+    
+    /**
+     * Regenerate fog in areas that haven't been visited recently
+     * This prevents players from scouting everything in wave 1
+     */
+    regenerateOldFog() {
+        const currentTime = this.time.now;
+        const areasToRefog = [];
+        
+        // Check all previously visited areas
+        this.lastVisitedTimes.forEach((lastVisitTime, gridKey) => {
+            const timeSinceVisit = currentTime - lastVisitTime;
+            
+            // If area hasn't been visited for a while, mark for re-fogging
+            if (timeSinceVisit > this.fogDecayTime) {
+                areasToRefog.push(gridKey);
+            }
+        });
+        
+        // Re-fog old areas
+        areasToRefog.forEach(gridKey => {
+            this.refogArea(gridKey);
+        });
+        
+        if (areasToRefog.length > 0) {
+            console.log(`🌫️ Dynamic fog: Re-fogged ${areasToRefog.length} areas not visited recently`);
+        }
+    }
+    
+    /**
+     * Re-fog a specific area by creating a new fog tile
+     */
+    refogArea(gridKey) {
+        // Don't re-fog if already fogged
+        if (this.fogGrid.has(gridKey)) {
+            return;
+        }
+        
+        // Calculate world position from grid key
+        const [gridX, gridY] = gridKey.split(',').map(Number);
+        const worldX = gridX * this.fogTileSize;
+        const worldY = gridY * this.fogTileSize;
+        
+        // Create new fog tile
+        const newFogTile = this.createFogTile(worldX, worldY);
+        
+        if (newFogTile) {
+            // Start with low alpha and fade in
+            newFogTile.setAlpha(0);
+            this.tweens.add({
+                targets: newFogTile,
+                alpha: 0.98,
+                duration: 1500,
+                ease: 'Power2.easeIn'
+            });
+            
+            // Remove from explored tiles and visit times
+            this.exploredTiles.delete(gridKey);
+            this.lastVisitedTimes.delete(gridKey);
+            
+            // Visual effect for re-fogging
+            this.createRefogEffect(worldX, worldY);
+        }
+    }
+    
+    /**
+     * Create a visual effect when an area becomes re-fogged
+     */
+    createRefogEffect(x, y) {
+        // Subtle gray mist effect
+        const effect = this.add.circle(x, y, 8, 0xAAAAAA, 0.4);
+        effect.setDepth(this.fogDepth + 1);
+        
+        this.tweens.add({
+            targets: effect,
+            scaleX: 3,
+            scaleY: 3,
+            alpha: 0,
+            duration: 2000,
+            ease: 'Power2.easeOut',
+            onComplete: () => {
+                if (effect && effect.active) {
+                    effect.destroy();
+                }
+            }
+        });
     }
 }
 
