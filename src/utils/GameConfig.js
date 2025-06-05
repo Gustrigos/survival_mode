@@ -780,11 +780,19 @@ if (typeof window !== 'undefined') {
     console.log('  GameConfig.previewSquadFormation() - Preview current formation');
     console.log('  GameConfig.previewSquadFormation(15) - Preview specific size');
     console.log('  GameConfig.getDifficultyNames()');
+    console.log('  🛒 PURCHASING SYSTEM:');
+    console.log('  GameConfig.getPurchasableItems() - Show all purchasable items with costs');
+    console.log('  GameConfig.getItemCost("sentryGun") - Get cost of specific item');
+    console.log('  GameConfig.canAffordItem("sentryGun", 150) - Check if points are enough');
+    console.log('  GameConfig.getPurchaseInfo("sentryGun") - Get detailed purchase info');
     console.log('  🌊 PROGRESSIVE SCALING:');
     console.log('  GameConfig.previewWaveScaling(10) - See scaling for specific wave');
     console.log('  GameConfig.showScalingCurve(1, 20) - Show scaling curve for waves 1-20');
     console.log('  GameConfig.getProgressiveScaling(wave) - Get raw scaling data');
+    console.log('  ⚙️ CURRENT SETTINGS:');
     console.log('  GameConfig.currentDifficulty =', GameConfig.currentDifficulty);
     console.log('  Current squad size:', GameConfig.getSquadSize(), 'members');
     console.log('  🎯 Progressive difficulty makes zombies +8% health, +4% speed, +6% spawn rate per wave!');
+    console.log('  💰 PRICING: Sentry Gun = 100pts (10 zombies), Barricade = 25pts (3 zombies), Health = 50pts (5 zombies)');
+    console.log('  📦 Look for blue supply crates ($) near the crash site to purchase items!');
 } 

@@ -298,6 +298,10 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         const playerPoints = window.gameState.score || 0;
         const purchaseItems = GameConfig.getPurchasableItems();
         
+        // Store player reference for distance checking
+        this.purchasingPlayer = player;
+        this.lastPlayerCheckTime = this.scene.time.now;
+        
         // Show purchase interface
         this.showPurchaseInterface(player, playerPoints, purchaseItems);
         
@@ -357,46 +361,117 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
             
             // Can afford check
             const canAfford = playerPoints >= item.currentCost;
-            const buttonColor = canAfford ? 0x00AA00 : 0xAA0000;
-            const textColor = canAfford ? '#FFFFFF' : '#CCCCCC';
             
-            // Button background
+            // Enhanced styling - much clearer distinction between affordable and unaffordable
+            const buttonColor = canAfford ? 0x00CC00 : 0x444444; // Bright green vs dark grey
+            const borderColor = canAfford ? 0x00FF00 : 0x666666; // Bright green vs grey border
+            const textColor = canAfford ? '#FFFFFF' : '#888888'; // White vs grey text
+            const buttonAlpha = canAfford ? 0.9 : 0.5; // More opaque vs semi-transparent
+            
+            // Button background with enhanced styling
             const button = this.scene.add.graphics();
-            button.fillStyle(buttonColor, 0.7);
+            button.fillStyle(buttonColor, buttonAlpha);
             button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
-            button.lineStyle(1, 0xFFFFFF, 0.8);
+            button.lineStyle(canAfford ? 3 : 1, borderColor, canAfford ? 1 : 0.6); // Thicker border for affordable
             button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
             button.setDepth(5001);
+            
+            // Add glow effect for affordable items
+            if (canAfford) {
+                button.lineStyle(6, 0x00FF00, 0.3); // Outer glow
+                button.strokeRoundedRect(buttonX - buttonWidth/2 + 2, buttonY - 18, buttonWidth - 4, 56, 8);
+            }
+            
             button.setInteractive(new Phaser.Geom.Rectangle(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50), Phaser.Geom.Rectangle.Contains);
             
-            // Button text
-            const buttonText = this.scene.add.text(buttonX, buttonY, `${item.name}\n${item.currentCost}pts`, {
-                fontSize: '10px',
+            // Enhanced button text with clearer pricing
+            const itemText = `${item.name}\n💰 ${item.currentCost} pts`;
+            const buttonText = this.scene.add.text(buttonX, buttonY, itemText, {
+                fontSize: canAfford ? '11px' : '10px', // Slightly larger for affordable items
                 fill: textColor,
                 fontFamily: 'Courier New',
-                fontWeight: 'bold',
-                align: 'center'
+                fontWeight: canAfford ? 'bold' : 'normal', // Bold for affordable items
+                align: 'center',
+                stroke: canAfford ? '#000000' : '#333333', // Better contrast
+                strokeThickness: canAfford ? 2 : 1
             });
             buttonText.setOrigin(0.5);
             buttonText.setDepth(5002);
             
-            // Button click handler
+            // Button click handler - only for affordable items
             if (canAfford) {
                 button.on('pointerdown', () => {
                     this.purchaseItem(itemId, item, player);
                 });
+                
+                // Enhanced hover effects for affordable items
                 button.on('pointerover', () => {
                     button.clear();
-                    button.fillStyle(0x00FF00, 0.9);
+                    // Bright hover state
+                    button.fillStyle(0x00FF00, 1.0);
                     button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
-                    button.lineStyle(1, 0xFFFFFF, 1);
+                    button.lineStyle(4, 0xFFFFFF, 1);
                     button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    // Glowing outer border
+                    button.lineStyle(8, 0x00FF00, 0.4);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2, buttonY - 20, buttonWidth, 60, 10);
+                    
+                    // Text enhancement on hover
+                    buttonText.setFill('#000000');
+                    buttonText.setFontSize('12px');
                 });
+                
                 button.on('pointerout', () => {
                     button.clear();
-                    button.fillStyle(0x00AA00, 0.7);
+                    // Return to normal affordable state
+                    button.fillStyle(0x00CC00, 0.9);
                     button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
-                    button.lineStyle(1, 0xFFFFFF, 0.8);
+                    button.lineStyle(3, 0x00FF00, 1);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    // Outer glow
+                    button.lineStyle(6, 0x00FF00, 0.3);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2 + 2, buttonY - 18, buttonWidth - 4, 56, 8);
+                    
+                    // Reset text
+                    buttonText.setFill('#FFFFFF');
+                    buttonText.setFontSize('11px');
+                });
+            } else {
+                // Add visual feedback for unaffordable items (but no purchase action)
+                button.on('pointerover', () => {
+                    // Subtle red tint to indicate it's unaffordable
+                    button.clear();
+                    button.fillStyle(0x662222, 0.6);
+                    button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    button.lineStyle(2, 0xFF6666, 0.8);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    
+                    // Show "NOT ENOUGH POINTS" text briefly
+                    const warningText = this.scene.add.text(buttonX, buttonY - 35, 'NOT ENOUGH POINTS', {
+                        fontSize: '9px',
+                        fill: '#FF6666',
+                        fontFamily: 'Courier New',
+                        fontWeight: 'bold',
+                        stroke: '#000000',
+                        strokeThickness: 1
+                    });
+                    warningText.setOrigin(0.5);
+                    warningText.setDepth(5003);
+                    
+                    // Auto-remove warning after 1 second
+                    this.scene.time.delayedCall(1000, () => {
+                        if (warningText && warningText.active) {
+                            warningText.destroy();
+                        }
+                    });
+                });
+                
+                button.on('pointerout', () => {
+                    // Return to normal unaffordable state
+                    button.clear();
+                    button.fillStyle(0x444444, 0.5);
+                    button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    button.lineStyle(1, 0x666666, 0.6);
                     button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
                 });
             }
@@ -409,7 +484,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         });
         
         // Close button
-        this.closeButton = this.scene.add.text(centerX, centerY + 50, '[ESC] Close', {
+        this.closeButton = this.scene.add.text(centerX, centerY + 50, '[ESC] Close • Auto-closes when you move away', {
             fontSize: '10px',
             fill: '#CCCCCC',
             fontFamily: 'Courier New',
@@ -434,7 +509,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
             this.destroyPurchaseUI();
         });
         
-        console.log('🛒 Purchase interface created');
+        console.log('🛒 Purchase interface created with auto-close and enhanced affordability styling');
     }
     
     purchaseItem(itemId, item, player) {
@@ -483,6 +558,10 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         // Update the purchase interface with new point total
         this.destroyPurchaseUI();
         this.createPurchaseUI(player, window.gameState.score, GameConfig.getPurchasableItems());
+        
+        // Re-establish player reference for auto-close functionality
+        this.purchasingPlayer = player;
+        this.lastPlayerCheckTime = this.scene.time.now;
     }
     
     showPurchaseSuccess(message, color = '#00FF00') {
@@ -544,6 +623,10 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
             this.escKey.destroy();
             this.escKey = null;
         }
+        
+        // Clear player reference and auto-close functionality
+        this.purchasingPlayer = null;
+        this.lastPlayerCheckTime = 0;
         
         this.purchaseButtons = null;
     }
@@ -767,6 +850,28 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
     update(time, delta) {
         if (!this.isActive || this.isCollected) return;
         
+        // Check if player has moved away from supply crate (auto-close purchase UI)
+        if (this.isSupplyCrate && this.purchasingPlayer && this.purchaseUIElements) {
+            const timeSinceLastCheck = time - this.lastPlayerCheckTime;
+            
+            // Check distance every 100ms to avoid excessive calculations
+            if (timeSinceLastCheck > 100) {
+                const distanceToPlayer = Phaser.Math.Distance.Between(
+                    this.x, this.y, 
+                    this.purchasingPlayer.x, this.purchasingPlayer.y
+                );
+                
+                // Auto-close if player is too far away (80 pixels)
+                if (distanceToPlayer > 80) {
+                    console.log('🛒 Player moved away from supply crate, closing purchase interface');
+                    this.destroyPurchaseUI();
+                    this.purchasingPlayer = null;
+                }
+                
+                this.lastPlayerCheckTime = time;
+            }
+        }
+        
         try {
             // Smooth hovering effect (much gentler - only 2 pixels)
             const hoverOffset = Math.sin(time * 0.002 + this.pulsePhase) * 2; // Gentle 2px hover
@@ -828,6 +933,10 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         try {
             // Clean up purchasing UI if it exists
             this.destroyPurchaseUI();
+            
+            // Clean up purchasing state
+            this.purchasingPlayer = null;
+            this.lastPlayerCheckTime = 0;
             
             // Clean up visual effects
             if (this.glowEffect) {

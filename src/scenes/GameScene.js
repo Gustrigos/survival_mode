@@ -5212,38 +5212,61 @@ export class GameScene extends Phaser.Scene {
             const helicopterX = 1000;
             const helicopterY = 750;
             
-            const initialCratePositions = [
+            // Regular loot crates
+            const lootCratePositions = [
                 {x: helicopterX - 80, y: helicopterY - 120},
                 {x: helicopterX + 80, y: helicopterY + 120}
             ];
             
-            console.log(`📦 Attempting to create ${initialCratePositions.length} initial interactive crates...`);
-            let successfulMilitaryCrates = 0;
+            // Supply crate position (closer to spawn point for easy access)
+            const supplyCratePosition = {x: helicopterX - 150, y: helicopterY + 50};
             
-            initialCratePositions.forEach((pos, index) => {
+            console.log(`📦 Creating ${lootCratePositions.length} loot crates and 1 supply crate...`);
+            let successfulCrates = 0;
+            
+            // Create regular loot crates
+            lootCratePositions.forEach((pos, index) => {
                 try {
-                    const militaryCrate = new MilitaryCrate(this, pos.x, pos.y);
+                    const lootCrate = new MilitaryCrate(this, pos.x, pos.y, null, false); // false = loot crate
                     
-                    if (!militaryCrate || !militaryCrate.active || !militaryCrate.isActive) {
-                        console.error('❌ MilitaryCrate creation failed at', pos.x, pos.y);
+                    if (!lootCrate || !lootCrate.active || !lootCrate.isActive) {
+                        console.error('❌ Loot crate creation failed at', pos.x, pos.y);
                         return;
                     }
                     
-                    this.militaryCrateList.push(militaryCrate);
-                    successfulMilitaryCrates++;
+                    this.militaryCrateList.push(lootCrate);
+                    successfulCrates++;
                     
-                    console.log(`✅ Military crate ${index + 1} placed successfully at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) with ${militaryCrate.contents.type}`);
+                    console.log(`✅ Loot crate ${index + 1} placed at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) with ${lootCrate.contents.type}`);
                     
                 } catch (crateError) {
-                    console.error(`❌ Error creating military crate ${index + 1}:`, crateError);
+                    console.error(`❌ Error creating loot crate ${index + 1}:`, crateError);
                 }
             });
             
-            console.log(`📦 Initial crate creation complete: ${successfulMilitaryCrates}/${initialCratePositions.length} successful`);
+            // Create supply crate (blue tinted, purchasing interface)
+            try {
+                const supplyCrate = new MilitaryCrate(this, supplyCratePosition.x, supplyCratePosition.y, null, true); // true = supply crate
+                
+                if (!supplyCrate || !supplyCrate.active || !supplyCrate.isActive) {
+                    console.error('❌ Supply crate creation failed at', supplyCratePosition.x, supplyCratePosition.y);
+                } else {
+                    this.militaryCrateList.push(supplyCrate);
+                    successfulCrates++;
+                    
+                    console.log(`✅ Supply crate placed at (${supplyCratePosition.x.toFixed(0)}, ${supplyCratePosition.y.toFixed(0)})`);
+                    console.log('🛒 Players can interact with the blue supply crate to purchase items with points!');
+                }
+                
+            } catch (supplyCrateError) {
+                console.error('❌ Error creating supply crate:', supplyCrateError);
+            }
             
-            if (successfulMilitaryCrates > 0) {
-                console.log(`✅ Created ${successfulMilitaryCrates} interactive military crates`);
-                console.log('📦 Players can walk into these crates to collect ammo, health, or barricades!');
+            console.log(`📦 Crash site crate creation complete: ${successfulCrates}/${lootCratePositions.length + 1} successful`);
+            
+            if (successfulCrates > 0) {
+                console.log(`✅ Created ${successfulCrates} crates (${lootCratePositions.length} loot + 1 supply)`);
+                console.log('📦 Walk into brown crates for free supplies, blue supply crate to purchase with points!');
             }
             
         } catch (error) {
