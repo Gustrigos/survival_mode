@@ -1,7 +1,8 @@
 import { SpriteScaler } from '../utils/SpriteScaler.js';
+import { GameConfig } from '../utils/GameConfig.js';
 
 export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
-    constructor(scene, x, y, contents = null) {
+    constructor(scene, x, y, contents = null, isSupplyCrate = false) {
         let usesFallback = false;
         
         // Check if crate texture exists
@@ -18,12 +19,13 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
                 const canvas = scene.textures.createCanvas(fallbackKey, 48, 32);
                 const ctx = canvas.getContext();
                 
-                // Draw a brown rectangle for crate
-                ctx.fillStyle = '#8B4513'; // Brown color for military crate
+                // Different color for supply crates vs loot crates
+                const baseColor = isSupplyCrate ? '#4169E1' : '#8B4513'; // Blue for supply, brown for loot
+                ctx.fillStyle = baseColor;
                 ctx.fillRect(0, 0, 48, 32);
                 
                 // Add some texture lines to look like a crate
-                ctx.strokeStyle = '#654321';
+                ctx.strokeStyle = isSupplyCrate ? '#1E3A8A' : '#654321';
                 ctx.lineWidth = 2;
                 // Vertical lines
                 for (let i = 12; i < 48; i += 12) {
@@ -46,7 +48,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
                 super(scene, x, y, fallbackKey);
                 usesFallback = true;
                 
-                console.log('✅ Created fallback crate texture');
+                console.log(`✅ Created fallback ${isSupplyCrate ? 'supply' : 'loot'} crate texture`);
             } catch (fallbackError) {
                 console.error('❌ Failed to create fallback crate texture:', fallbackError);
 
@@ -73,23 +75,32 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         }
         
         try {
-            console.log('📦 Creating interactive loot crate at', x, y, usesFallback ? '(using fallback texture)' : '(using military_crate texture)');
+            const crateType = isSupplyCrate ? 'supply' : 'loot';
+            console.log(`📦 Creating ${crateType} crate at`, x, y, usesFallback ? '(using fallback texture)' : '(using military_crate texture)');
             
             scene.add.existing(this);
             scene.physics.add.existing(this, false); // Dynamic body for collection detection
             
             this.scene = scene;
             this.usesFallback = usesFallback;
+            this.isSupplyCrate = isSupplyCrate;
             
             // Structure properties
-            this.structureType = 'military_crate';
+            this.structureType = isSupplyCrate ? 'supply_crate' : 'military_crate';
             this.material = 'metal';
             this.isDestructible = false;
-            this.isCollectable = true; // NEW: Mark as collectable
+            this.isCollectable = true;
             
             // Loot properties
             this.contents = contents || this.generateRandomContents();
             this.isCollected = false;
+            
+            // Supply crate properties
+            if (this.isSupplyCrate) {
+                this.purchaseItems = GameConfig.getPurchasableItems();
+                this.selectedItem = 'sentryGun'; // Default selected item
+                this.isShoppingMode = false; // Whether the shopping interface is active
+            }
             
             // Visual effect properties
             this.originalScale = { x: 1, y: 1 };
@@ -189,32 +200,50 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         // Create a small, subtle icon above the crate to show its contents
         const iconY = this.y - 30; // Moved closer to crate
         
-        // Create simple text indicator instead of complex graphics
-        let symbol, color;
-        
-        if (this.contents.type === 'ammo') {
-            symbol = '•'; // Simple bullet point
-            color = '#FFD700';
-        } else if (this.contents.type === 'health') {
-            symbol = '+'; // Plus symbol
-            color = '#00FF00';
-        } else if (this.contents.type === 'barricade') {
-            symbol = '■'; // Square symbol
-            color = '#8B4513';
+        if (this.isSupplyCrate) {
+            // Supply crate gets a shop icon
+            this.contentIcon = this.scene.add.text(this.x, iconY, '$', {
+                fontSize: '20px',
+                fill: '#FFD700',
+                fontFamily: 'Arial',
+                fontWeight: 'bold',
+                stroke: '#000000',
+                strokeThickness: 2
+            });
+            this.contentIcon.setOrigin(0.5);
+            this.contentIcon.setDepth(this.depth + 2);
+            this.contentIcon.setAlpha(0.9);
+            
+            // Add blue tint to supply crates
+            this.setTint(0x6495ED);
+        } else {
+            // Regular loot crate behavior
+            let symbol, color;
+            
+            if (this.contents.type === 'ammo') {
+                symbol = '•'; // Simple bullet point
+                color = '#FFD700';
+            } else if (this.contents.type === 'health') {
+                symbol = '+'; // Plus symbol
+                color = '#00FF00';
+            } else if (this.contents.type === 'barricade') {
+                symbol = '■'; // Square symbol
+                color = '#8B4513';
+            }
+            
+            // Create subtle text indicator
+            this.contentIcon = this.scene.add.text(this.x, iconY, symbol, {
+                fontSize: '16px',
+                fill: color,
+                fontFamily: 'Arial',
+                fontWeight: 'bold',
+                stroke: '#000000',
+                strokeThickness: 1
+            });
+            this.contentIcon.setOrigin(0.5);
+            this.contentIcon.setDepth(this.depth + 2);
+            this.contentIcon.setAlpha(0.8); // Slightly transparent
         }
-        
-        // Create subtle text indicator
-        this.contentIcon = this.scene.add.text(this.x, iconY, symbol, {
-            fontSize: '16px',
-            fill: color,
-            fontFamily: 'Arial',
-            fontWeight: 'bold',
-            stroke: '#000000',
-            strokeThickness: 1
-        });
-        this.contentIcon.setOrigin(0.5);
-        this.contentIcon.setDepth(this.depth + 2);
-        this.contentIcon.setAlpha(0.8); // Slightly transparent
     }
     
     setupPhysicsBody() {
@@ -256,6 +285,270 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
     collectCrate(player) {
         if (this.isCollected) return false; // Already collected
         
+        if (this.isSupplyCrate) {
+            // Handle supply crate purchasing
+            return this.handleSupplyCratePurchase(player);
+        } else {
+            // Handle regular loot crate collection
+            return this.handleLootCrateCollection(player);
+        }
+    }
+    
+    handleSupplyCratePurchase(player) {
+        const playerPoints = window.gameState.score || 0;
+        const purchaseItems = GameConfig.getPurchasableItems();
+        
+        // Show purchase interface
+        this.showPurchaseInterface(player, playerPoints, purchaseItems);
+        
+        return false; // Don't consume the crate yet
+    }
+    
+    showPurchaseInterface(player, playerPoints, purchaseItems) {
+        // Create purchase UI
+        this.createPurchaseUI(player, playerPoints, purchaseItems);
+    }
+    
+    createPurchaseUI(player, playerPoints, purchaseItems) {
+        // Clean up any existing purchase UI
+        this.destroyPurchaseUI();
+        
+        const centerX = this.x;
+        const centerY = this.y - 100;
+        
+        // Create background panel
+        this.purchasePanel = this.scene.add.graphics();
+        this.purchasePanel.fillStyle(0x000000, 0.8);
+        this.purchasePanel.fillRoundedRect(centerX - 150, centerY - 80, 300, 160, 10);
+        this.purchasePanel.lineStyle(2, 0xFFD700, 1);
+        this.purchasePanel.strokeRoundedRect(centerX - 150, centerY - 80, 300, 160, 10);
+        this.purchasePanel.setDepth(5000);
+        
+        // Title
+        this.purchaseTitle = this.scene.add.text(centerX, centerY - 60, 'SUPPLY CRATE', {
+            fontSize: '16px',
+            fill: '#FFD700',
+            fontFamily: 'Courier New',
+            fontWeight: 'bold',
+            align: 'center'
+        });
+        this.purchaseTitle.setOrigin(0.5);
+        this.purchaseTitle.setDepth(5001);
+        
+        // Player points display
+        this.pointsDisplay = this.scene.add.text(centerX, centerY - 40, `Points: ${playerPoints}`, {
+            fontSize: '12px',
+            fill: '#FFFFFF',
+            fontFamily: 'Courier New',
+            align: 'center'
+        });
+        this.pointsDisplay.setOrigin(0.5);
+        this.pointsDisplay.setDepth(5001);
+        
+        // Create item buttons
+        this.purchaseButtons = [];
+        const items = Object.keys(purchaseItems);
+        const buttonWidth = 280 / items.length;
+        
+        items.forEach((itemId, index) => {
+            const item = purchaseItems[itemId];
+            const buttonX = centerX - 140 + (index * buttonWidth) + (buttonWidth / 2);
+            const buttonY = centerY;
+            
+            // Can afford check
+            const canAfford = playerPoints >= item.currentCost;
+            const buttonColor = canAfford ? 0x00AA00 : 0xAA0000;
+            const textColor = canAfford ? '#FFFFFF' : '#CCCCCC';
+            
+            // Button background
+            const button = this.scene.add.graphics();
+            button.fillStyle(buttonColor, 0.7);
+            button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+            button.lineStyle(1, 0xFFFFFF, 0.8);
+            button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+            button.setDepth(5001);
+            button.setInteractive(new Phaser.Geom.Rectangle(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50), Phaser.Geom.Rectangle.Contains);
+            
+            // Button text
+            const buttonText = this.scene.add.text(buttonX, buttonY, `${item.name}\n${item.currentCost}pts`, {
+                fontSize: '10px',
+                fill: textColor,
+                fontFamily: 'Courier New',
+                fontWeight: 'bold',
+                align: 'center'
+            });
+            buttonText.setOrigin(0.5);
+            buttonText.setDepth(5002);
+            
+            // Button click handler
+            if (canAfford) {
+                button.on('pointerdown', () => {
+                    this.purchaseItem(itemId, item, player);
+                });
+                button.on('pointerover', () => {
+                    button.clear();
+                    button.fillStyle(0x00FF00, 0.9);
+                    button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    button.lineStyle(1, 0xFFFFFF, 1);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                });
+                button.on('pointerout', () => {
+                    button.clear();
+                    button.fillStyle(0x00AA00, 0.7);
+                    button.fillRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                    button.lineStyle(1, 0xFFFFFF, 0.8);
+                    button.strokeRoundedRect(buttonX - buttonWidth/2 + 5, buttonY - 15, buttonWidth - 10, 50, 5);
+                });
+            }
+            
+            this.purchaseButtons.push({
+                button: button,
+                text: buttonText,
+                itemId: itemId
+            });
+        });
+        
+        // Close button
+        this.closeButton = this.scene.add.text(centerX, centerY + 50, '[ESC] Close', {
+            fontSize: '10px',
+            fill: '#CCCCCC',
+            fontFamily: 'Courier New',
+            align: 'center'
+        });
+        this.closeButton.setOrigin(0.5);
+        this.closeButton.setDepth(5001);
+        
+        // Store UI elements for cleanup
+        this.purchaseUIElements = [
+            this.purchasePanel,
+            this.purchaseTitle,
+            this.pointsDisplay,
+            this.closeButton,
+            ...this.purchaseButtons.map(b => b.button),
+            ...this.purchaseButtons.map(b => b.text)
+        ];
+        
+        // Set up ESC key to close
+        this.escKey = this.scene.input.keyboard.addKey('ESC');
+        this.escKey.on('down', () => {
+            this.destroyPurchaseUI();
+        });
+        
+        console.log('🛒 Purchase interface created');
+    }
+    
+    purchaseItem(itemId, item, player) {
+        const playerPoints = window.gameState.score || 0;
+        const validation = GameConfig.validatePurchase(itemId, playerPoints, player.equipment);
+        
+        if (!validation.valid) {
+            this.showPurchaseError(validation.reason);
+            return;
+        }
+        
+        // Process the purchase
+        const cost = validation.cost;
+        
+        // Deduct points
+        window.gameState.score -= cost;
+        if (window.updateUI) {
+            window.updateUI.score(window.gameState.score);
+        }
+        
+        // Give item to player
+        if (item.type === 'consumable') {
+            // Handle consumables (like health packs)
+            if (itemId === 'healthPack') {
+                const currentHealth = player.health || 100;
+                const maxHealth = player.maxHealth || 100;
+                const newHealth = Math.min(currentHealth + item.healAmount, maxHealth);
+                player.health = newHealth;
+                window.gameState.playerHealth = newHealth;
+                if (window.updateUI) {
+                    window.updateUI.health(newHealth, maxHealth);
+                }
+                this.showPurchaseSuccess(`+${item.healAmount} Health`, '#00FF00');
+            }
+        } else {
+            // Handle equipment items
+            const equipmentSlot = item.equipmentSlot;
+            if (player.equipment && player.equipment[equipmentSlot]) {
+                player.equipment[equipmentSlot].count = (player.equipment[equipmentSlot].count || 0) + 1;
+                this.showPurchaseSuccess(`+1 ${item.name}`, '#FFD700');
+            }
+        }
+        
+        console.log(`💰 Purchased ${item.name} for ${cost} points`);
+        
+        // Update the purchase interface with new point total
+        this.destroyPurchaseUI();
+        this.createPurchaseUI(player, window.gameState.score, GameConfig.getPurchasableItems());
+    }
+    
+    showPurchaseSuccess(message, color = '#00FF00') {
+        const successText = this.scene.add.text(this.x, this.y - 150, message, {
+            fontSize: '14px',
+            fill: color,
+            fontFamily: 'Courier New',
+            fontWeight: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        successText.setOrigin(0.5);
+        successText.setDepth(6000);
+        
+        this.scene.tweens.add({
+            targets: successText,
+            y: successText.y - 30,
+            alpha: 0,
+            scale: 1.2,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => successText.destroy()
+        });
+    }
+    
+    showPurchaseError(message, color = '#FF0000') {
+        const errorText = this.scene.add.text(this.x, this.y - 150, message, {
+            fontSize: '12px',
+            fill: color,
+            fontFamily: 'Courier New',
+            fontWeight: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        errorText.setOrigin(0.5);
+        errorText.setDepth(6000);
+        
+        this.scene.tweens.add({
+            targets: errorText,
+            y: errorText.y - 20,
+            alpha: 0,
+            duration: 1500,
+            ease: 'Power2',
+            onComplete: () => errorText.destroy()
+        });
+    }
+    
+    destroyPurchaseUI() {
+        if (this.purchaseUIElements) {
+            this.purchaseUIElements.forEach(element => {
+                if (element && element.destroy) {
+                    element.destroy();
+                }
+            });
+            this.purchaseUIElements = null;
+        }
+        
+        if (this.escKey) {
+            this.escKey.destroy();
+            this.escKey = null;
+        }
+        
+        this.purchaseButtons = null;
+    }
+    
+    handleLootCrateCollection(player) {
         console.log(`📦 Player collecting ${this.contents.type} crate (${this.contents.amount})`);
         
         this.isCollected = true;
@@ -530,20 +823,34 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
     }
     
     destroy() {
-        console.log('📦 Loot crate destroyed and cleaned up');
+        console.log('🗑️ Destroying military crate...');
         
-        // Clean up visual effects
-        if (this.glowEffect) {
-            this.glowEffect.destroy();
-            this.glowEffect = null;
+        try {
+            // Clean up purchasing UI if it exists
+            this.destroyPurchaseUI();
+            
+            // Clean up visual effects
+            if (this.glowEffect) {
+                this.glowEffect.destroy();
+                this.glowEffect = null;
+            }
+            
+            if (this.contentIcon) {
+                this.contentIcon.destroy();
+                this.contentIcon = null;
+            }
+            
+            // Call parent destroy
+            super.destroy();
+            
+        } catch (error) {
+            console.error('❌ Error destroying military crate:', error);
+            // Still try to call parent destroy even if cleanup fails
+            try {
+                super.destroy();
+            } catch (parentError) {
+                console.error('❌ Error calling super.destroy():', parentError);
+            }
         }
-        
-        if (this.contentIcon) {
-            this.contentIcon.destroy();
-            this.contentIcon = null;
-        }
-        
-        // Call parent destroy method
-        super.destroy();
     }
 } 

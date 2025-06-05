@@ -38,13 +38,13 @@ export const GameConfig = {
             playerHealthMultiplier: 1.0
         },
         hard: {
-            zombiesFirstWave: 35,
-            zombiesWaveIncrement: 5,
-            zombieSpawnDelay: 300,
-            zombieHealthMultiplier: 1.3,
-            zombieSpeedMultiplier: 1.2,
-            squadSize: 3,  // Hard mode gets fewer squad members
-            playerHealthMultiplier: 0.8
+            zombiesFirstWave: 25,
+            zombiesWaveIncrement: 50,
+            zombieSpawnDelay: 250,
+            zombieHealthMultiplier: 1.0,
+            zombieSpeedMultiplier: 1.0,
+            squadSize: 6, 
+            playerHealthMultiplier: 1.5
         },
         nightmare: {
             zombiesFirstWave: 50,
@@ -66,12 +66,12 @@ export const GameConfig = {
             playerHealthMultiplier: 0.9
         },
         apocalypse: {
-            zombiesFirstWave: 25,
+            zombiesFirstWave: 100,
             zombiesWaveIncrement: 50,
-            zombieSpawnDelay: 250,
+            zombieSpawnDelay: 100,
             zombieHealthMultiplier: 1.0,
             zombieSpeedMultiplier: 1.0,
-            squadSize: 6, 
+            squadSize: 9, 
             playerHealthMultiplier: 1.5
         }
     },
@@ -109,10 +109,52 @@ export const GameConfig = {
         // Equipment starting inventory
         startingEquipment: {
             1: { id: 'machineGun', type: 'weapon', name: 'Machine Gun', icon: 'machine_gun', ammo: 45 },
-            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_gun_right', count: 8 },
-            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade', count: 8 },
+            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_gun_right', count: 0 }, // No free sentry guns
+            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade', count: 12 },
             4: { id: 'minigun', type: 'weapon', name: 'Minigun', icon: 'minigun', ammo: 100 },
             5: { id: 'pistol', type: 'weapon', name: 'Pistol', icon: 'pistol', ammo: 15 }
+        }
+    },
+
+    // === PURCHASING SYSTEM ===
+    // Simple points-based purchasing through military crates
+    purchasing: {
+        enabled: true,
+        currency: 'points', // Uses the existing score system
+        
+        // Items available for purchase
+        items: {
+            sentryGun: {
+                name: 'Sentry Gun',
+                cost: 100,  // 100 points = 10 zombie kills
+                description: 'Automated defense turret',
+                equipmentSlot: 2,
+                maxStack: 10
+            },
+            barricade: {
+                name: 'Barricade',
+                cost: 25,   // 25 points = 2-3 zombie kills
+                description: 'Wooden defensive barrier',
+                equipmentSlot: 3,
+                maxStack: 20
+            },
+            healthPack: {
+                name: 'Health Pack',
+                cost: 50,   // 50 points = 5 zombie kills
+                description: 'Restores 50 health',
+                type: 'consumable',
+                healAmount: 50
+            }
+        },
+        
+        // Difficulty-based cost scaling
+        costMultipliers: {
+            easy: 0.7,      // 30% cheaper
+            normal: 1.0,    // Standard cost
+            hard: 1.2,      // 20% more expensive
+            nightmare: 1.5, // 50% more expensive
+            extreme: 1.8,   // 80% more expensive
+            apocalypse: 2.0 // Double cost
         }
     },
 
@@ -145,7 +187,7 @@ export const GameConfig = {
                 name: 'Charlie',
                 color: 0x0099ff,
                 formationOffset: { x: -60, y: -20 },
-                weapon: 'machineGun',
+                weapon: 'minigun',
                 aggroRange: 280,
                 followDistance: 60,
                 maxSeparation: 220,
@@ -156,7 +198,7 @@ export const GameConfig = {
                 name: 'Delta',
                 color: 0xff3333,
                 formationOffset: { x: 60, y: -20 },
-                weapon: 'machineGun',
+                weapon: 'minigun',
                 aggroRange: 320,
                 followDistance: 60,
                 maxSeparation: 220,
@@ -167,7 +209,7 @@ export const GameConfig = {
                 name: 'Alpha',
                 color: 0x00ff00,
                 formationOffset: { x: -50, y: 40 },
-                weapon: 'machineGun',
+                weapon: 'minigun',
                 aggroRange: 250,
                 followDistance: 60,
                 maxSeparation: 200,
@@ -178,7 +220,7 @@ export const GameConfig = {
                 name: 'Bravo',
                 color: 0xff8800,
                 formationOffset: { x: 50, y: 40 },
-                weapon: 'machineGun',
+                weapon: 'minigun',
                 aggroRange: 300,
                 followDistance: 60,
                 maxSeparation: 200,
@@ -632,6 +674,99 @@ export const GameConfig = {
         
         console.log('-'.repeat(70));
         console.log('💡 Use GameConfig.previewWaveScaling(wave) for detailed info on specific waves');
+    },
+
+    // === PURCHASING SYSTEM METHODS ===
+
+    /**
+     * Get the cost of an item with difficulty scaling applied
+     */
+    getItemCost(itemId) {
+        if (!this.purchasing.enabled || !this.purchasing.items[itemId]) {
+            return null;
+        }
+
+        const item = this.purchasing.items[itemId];
+        const baseCost = item.cost;
+        const difficulty = this.getDifficulty();
+        const multiplier = difficulty ? 
+            (this.purchasing.costMultipliers[this.currentDifficulty] || 1.0) : 1.0;
+
+        return Math.round(baseCost * multiplier);
+    },
+
+    /**
+     * Get all purchasable items with their current costs
+     */
+    getPurchasableItems() {
+        if (!this.purchasing.enabled) return {};
+
+        const items = {};
+        Object.keys(this.purchasing.items).forEach(itemId => {
+            const item = this.purchasing.items[itemId];
+            items[itemId] = {
+                ...item,
+                currentCost: this.getItemCost(itemId)
+            };
+        });
+
+        return items;
+    },
+
+    /**
+     * Check if a player can afford an item
+     */
+    canAffordItem(itemId, playerPoints) {
+        const cost = this.getItemCost(itemId);
+        return cost !== null && playerPoints >= cost;
+    },
+
+    /**
+     * Get purchase info for display
+     */
+    getPurchaseInfo(itemId) {
+        const item = this.purchasing.items[itemId];
+        if (!item) return null;
+
+        const cost = this.getItemCost(itemId);
+        const difficultyMultiplier = this.purchasing.costMultipliers[this.currentDifficulty] || 1.0;
+
+        return {
+            name: item.name,
+            description: item.description,
+            cost: cost,
+            baseCost: item.cost,
+            difficultyMultiplier: difficultyMultiplier,
+            type: item.type || 'equipment',
+            equipmentSlot: item.equipmentSlot
+        };
+    },
+
+    /**
+     * Validate a purchase attempt
+     */
+    validatePurchase(itemId, playerPoints, playerEquipment) {
+        const item = this.purchasing.items[itemId];
+        if (!item) {
+            return { valid: false, reason: 'Item not found' };
+        }
+
+        const cost = this.getItemCost(itemId);
+        if (playerPoints < cost) {
+            return { valid: false, reason: `Not enough points (need ${cost}, have ${playerPoints})` };
+        }
+
+        // Check if player's equipment slot can accept more items
+        if (item.equipmentSlot && playerEquipment && playerEquipment[item.equipmentSlot]) {
+            const currentCount = playerEquipment[item.equipmentSlot].count || 0;
+            const maxStack = item.maxStack || 10;
+            
+            if (currentCount >= maxStack) {
+                return { valid: false, reason: `Equipment slot full (max ${maxStack})` };
+            }
+        }
+
+        return { valid: true, cost: cost };
     }
 };
 

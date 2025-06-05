@@ -34,6 +34,9 @@ export class GameScene extends Phaser.Scene {
         this.fogDecayTime = 45000; // 45 seconds before areas start to re-fog
         this.fogRegenerationRate = 2000; // Check for regeneration every 2 seconds
         this.lastFogRegenCheck = 0;
+        
+        // === CLEANUP FLAG ===
+        this.cleanupCompleted = false; // Prevent double cleanup execution
     }
 
     preload() {
@@ -2578,6 +2581,12 @@ export class GameScene extends Phaser.Scene {
      * Called before scene shutdown
      */
     cleanupBeforeDestroy() {
+        // Prevent double cleanup execution
+        if (this.cleanupCompleted) {
+            console.log('🧹 Cleanup already completed, skipping...');
+            return;
+        }
+        
         console.log('🧹 Starting comprehensive scene cleanup...');
         
         try {
@@ -2605,11 +2614,15 @@ export class GameScene extends Phaser.Scene {
             // 8. Clear object references
             this.clearObjectReferences();
             
+            // Mark cleanup as completed
+            this.cleanupCompleted = true;
+            
             console.log('✅ Scene cleanup completed successfully');
             
         } catch (error) {
             console.warn('⚠️ Error during scene cleanup:', error);
             // Continue with scene transition even if cleanup fails
+            this.cleanupCompleted = true;
         }
     }
     
@@ -2628,7 +2641,9 @@ export class GameScene extends Phaser.Scene {
                 this.commandWheelElements.forEach(element => {
                     if (element && element.active && typeof element.destroy === 'function') {
                         try {
-                            this.tweens.killTweensOf(element);
+                            if (this.tweens) {
+                                this.tweens.killTweensOf(element);
+                            }
                             element.destroy();
                         } catch (destroyError) {
                             console.warn('Error destroying command wheel element:', destroyError);
@@ -2637,7 +2652,7 @@ export class GameScene extends Phaser.Scene {
                 });
             }
             
-            // Clear references
+            // Clear references safely
             this.commandWheel = null;
             this.commandWheelElements = [];
             this.commandWheelBg = null;
@@ -2666,7 +2681,9 @@ export class GameScene extends Phaser.Scene {
             // Clean up ping marker
             if (this.pingMarker) {
                 if (this.pingMarker.active && typeof this.pingMarker.destroy === 'function') {
-                    this.tweens.killTweensOf(this.pingMarker);
+                    if (this.tweens) {
+                        this.tweens.killTweensOf(this.pingMarker);
+                    }
                     this.pingMarker.destroy();
                 }
                 this.pingMarker = null;
@@ -2675,13 +2692,15 @@ export class GameScene extends Phaser.Scene {
             // Clean up ping text marker
             if (this.pingTextMarker) {
                 if (this.pingTextMarker.active && typeof this.pingTextMarker.destroy === 'function') {
-                    this.tweens.killTweensOf(this.pingTextMarker);
+                    if (this.tweens) {
+                        this.tweens.killTweensOf(this.pingTextMarker);
+                    }
                     this.pingTextMarker.destroy();
                 }
                 this.pingTextMarker = null;
             }
             
-            // Clear references
+            // Clear references safely
             this.pingTarget = null;
             this.pingLocation = null;
             
@@ -2696,12 +2715,12 @@ export class GameScene extends Phaser.Scene {
     cleanupSquadUI() {
         try {
             // Clean up squad mode UI elements
-            if (this.squadModeText && this.squadModeText.active) {
+            if (this.squadModeText && this.squadModeText.active && typeof this.squadModeText.destroy === 'function') {
                 this.squadModeText.destroy();
             }
             this.squadModeText = null;
             
-            if (this.squadInstructionText && this.squadInstructionText.active) {
+            if (this.squadInstructionText && this.squadInstructionText.active && typeof this.squadInstructionText.destroy === 'function') {
                 this.squadInstructionText.destroy();
             }
             this.squadInstructionText = null;
@@ -4808,13 +4827,26 @@ export class GameScene extends Phaser.Scene {
             previewExists: !!this.placementPreview
         });
         
-        if (this.placementPreview) {
-            console.log('💥 Destroying preview sprite...');
-            this.placementPreview.destroy();
+        try {
+            if (this.placementPreview) {
+                console.log('💥 Destroying preview sprite...');
+                // Kill any tweens targeting the preview to prevent destroy errors
+                if (this.tweens) {
+                    this.tweens.killTweensOf(this.placementPreview);
+                }
+                // Check if the preview is still active before destroying
+                if (this.placementPreview.active && typeof this.placementPreview.destroy === 'function') {
+                    this.placementPreview.destroy();
+                }
+                this.placementPreview = null;
+                console.log('💥 Preview sprite destroyed');
+            } else {
+                console.log('💥 No preview sprite to destroy');
+            }
+        } catch (error) {
+            console.warn('💥 Error destroying placement preview:', error);
+            // Ensure references are cleared even if destroy fails
             this.placementPreview = null;
-            console.log('💥 Preview sprite destroyed');
-        } else {
-            console.log('💥 No preview sprite to destroy');
         }
         
         this.isShowingPreview = false;

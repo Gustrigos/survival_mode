@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+avoid leaving comments in code files. Only do so if very necessary and keep it short. 
+avoid creating .md files
+avoid trying to run and test the program unless very needed.
