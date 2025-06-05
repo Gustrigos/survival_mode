@@ -1,0 +1,25 @@
+URGENT MANUAL FIXES NEEDED FOR GameScene.js:
+
+ERROR: Cannot read properties of undefined (reading 'set') at line 5408
+
+STEP 1: Restore the file first
+- Rename GameScene.js.backup to GameScene.js
+
+STEP 2: Remove this line from discoverArea method (around line 5407-5408):
+DELETE THESE LINES:
+    // === DYNAMIC FOG: Track visit time for regeneration system ===
+    this.lastVisitedTimes.set(gridKey, this.time.now);
+
+STEP 3: Remove these methods at the end of the file:
+DELETE ENTIRE METHODS:
+- regenerateOldFog()
+- refogArea(gridKey) 
+- createRefogEffect(x, y)
+
+STEP 4: Update console logs to remove regeneration references:
+FIND AND REMOVE/UPDATE:
+- Any console.log mentioning "lastVisitedTimes" 
+- Any console.log mentioning "regeneration"
+- Any console.log mentioning "45 seconds"
+
+This will fix the fog regeneration system and make discovered areas stay permanently clear! 

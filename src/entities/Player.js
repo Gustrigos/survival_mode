@@ -1,4 +1,5 @@
 import { SWATSpriteManager } from '../utils/SWATSpriteManager.js';
+import { GameConfig } from '../utils/GameConfig.js';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
     constructor(scene, x, y) {
@@ -25,21 +26,40 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         
         // Weapon system
         this.currentWeapon = 'machineGun';
+        
+        // Load weapon stats from GameConfig if available, otherwise use defaults
+        const getWeaponAmmo = (weaponId) => {
+            if (GameConfig && GameConfig.player && GameConfig.player.startingEquipment) {
+                // Find the equipment slot that contains this weapon
+                for (const slotNumber in GameConfig.player.startingEquipment) {
+                    const equipment = GameConfig.player.startingEquipment[slotNumber];
+                    if (equipment.type === 'weapon' && equipment.id === weaponId && equipment.ammo !== undefined) {
+                        return equipment.ammo;
+                    }
+                }
+            }
+            return null; // No config found, use default
+        };
+        
+        const machineGunAmmo = getWeaponAmmo('machineGun') || 30; // Default to 30 if not found
+        const pistolAmmo = getWeaponAmmo('pistol') || 15;
+        const minigunAmmo = getWeaponAmmo('minigun') || 100; // Default to 100 if not found
+        
         this.weapons = {
             pistol: {
-                ammo: 15,
-                maxAmmo: 15,
+                ammo: pistolAmmo,
+                maxAmmo: pistolAmmo,
                 fireRate: 400,
                 damage: 30,
                 reloadTime: 1500,
                 bulletSpeed: 500,
                 automatic: false,
-                icon: 'weapon_right',
+                icon: 'pistol',
                 type: 'weapon'
             },
             machineGun: {
-                ammo: 30,
-                maxAmmo: 30,
+                ammo: machineGunAmmo,
+                maxAmmo: machineGunAmmo,
                 fireRate: 100, // automatic
                 damage: 20,
                 reloadTime: 2000,
@@ -47,34 +67,81 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 automatic: true,
                 icon: 'machine_gun',
                 type: 'weapon'
+            },
+            minigun: {
+                ammo: minigunAmmo,
+                maxAmmo: minigunAmmo,
+                fireRate: 50, // Very fast - twice as fast as machine gun
+                damage: 35, // High damage - more than machine gun
+                reloadTime: 3000, // Longer reload time due to large ammo capacity
+                bulletSpeed: 700, // Faster bullets
+                automatic: true,
+                icon: 'minigun',
+                type: 'weapon'
             }
         };
         
+        console.log(`🔫 Weapon ammo loaded: Machine Gun: ${machineGunAmmo}, Pistol: ${pistolAmmo}, Minigun: ${minigunAmmo}`);
+        
         // Equipment/Item system (including weapons and placeable items)
-        this.equipment = {
-            1: {
-                type: 'weapon',
-                id: 'machineGun',
-                name: 'Machine Gun',
-                icon: 'machine_gun'
-            },
-            2: {
-                type: 'placeable',
-                id: 'sentryGun',
-                name: 'Sentry Gun',
-                icon: 'sentry_gun_right',
-                count: 3, // Start with 3 sentry guns
-                maxStack: 5
-            },
-            3: {
-                type: 'placeable',
-                id: 'barricade',
-                name: 'Barricade',
-                icon: 'barricade',
-                count: 5, // Start with 5 barricades
-                maxStack: 10
-            }
-        };
+        // Load equipment from GameConfig instead of hardcoding values
+        this.equipment = {};
+        
+        // Load starting equipment from GameConfig
+        if (GameConfig && GameConfig.player && GameConfig.player.startingEquipment) {
+            console.log('🎒 Loading starting equipment from GameConfig...');
+            
+            // Copy equipment from config
+            Object.keys(GameConfig.player.startingEquipment).forEach(slotNumber => {
+                const configEquipment = GameConfig.player.startingEquipment[slotNumber];
+                this.equipment[slotNumber] = {
+                    type: configEquipment.type,
+                    id: configEquipment.id,
+                    name: configEquipment.name,
+                    icon: configEquipment.icon
+                };
+                
+                // Add count for placeable items
+                if (configEquipment.type === 'placeable' && configEquipment.count !== undefined) {
+                    this.equipment[slotNumber].count = configEquipment.count;
+                    this.equipment[slotNumber].maxStack = configEquipment.count + 5; // Allow collecting more
+                }
+                
+                // Add ammo for weapons
+                if (configEquipment.type === 'weapon' && configEquipment.ammo !== undefined) {
+                    this.equipment[slotNumber].ammo = configEquipment.ammo;
+                }
+                
+                console.log(`✅ Loaded ${configEquipment.name} in slot ${slotNumber}:`, this.equipment[slotNumber]);
+            });
+        } else {
+            // Fallback to hardcoded values if GameConfig not available
+            console.warn('⚠️ GameConfig not found, using fallback equipment');
+            this.equipment = {
+                1: {
+                    type: 'weapon',
+                    id: 'machineGun',
+                    name: 'Machine Gun',
+                    icon: 'machine_gun'
+                },
+                2: {
+                    type: 'placeable',
+                    id: 'sentryGun',
+                    name: 'Sentry Gun',
+                    icon: 'sentry_gun_right',
+                    count: 3,
+                    maxStack: 5
+                },
+                3: {
+                    type: 'placeable',
+                    id: 'barricade',
+                    name: 'Barricade',
+                    icon: 'barricade',
+                    count: 5,
+                    maxStack: 10
+                }
+            };
+        }
         
         this.currentSlot = 1; // Currently selected slot
         

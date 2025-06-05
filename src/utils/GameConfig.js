@@ -67,11 +67,11 @@ export const GameConfig = {
         },
         apocalypse: {
             zombiesFirstWave: 25,
-            zombiesWaveIncrement: 25,
+            zombiesWaveIncrement: 50,
             zombieSpawnDelay: 250,
             zombieHealthMultiplier: 1.0,
             zombieSpeedMultiplier: 1.0,
-            squadSize: 10, 
+            squadSize: 6, 
             playerHealthMultiplier: 1.5
         }
     },
@@ -91,7 +91,7 @@ export const GameConfig = {
         // Base values (will be modified by difficulty preset)
         zombiesFirstWave: 25,
         zombiesWaveIncrement: 3,  // How many more zombies each wave
-        maxZombiesPerWave: 100,   // Cap for very high waves
+        maxZombiesPerWave: 1000,   // Cap for very high waves
         waveStartDelay: 3000,     // Delay between waves (ms)
         zombieSpawnDelay: 500     // Delay between zombie spawns (ms)
     },
@@ -108,9 +108,11 @@ export const GameConfig = {
         
         // Equipment starting inventory
         startingEquipment: {
-            1: { id: 'machineGun', type: 'weapon', name: 'Machine Gun', icon: 'weapon_icon', ammo: 30 },
-            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_icon', count: 6 },
-            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade_icon', count: 6 }
+            1: { id: 'machineGun', type: 'weapon', name: 'Machine Gun', icon: 'machine_gun', ammo: 45 },
+            2: { id: 'sentryGun', type: 'placeable', name: 'Sentry Gun', icon: 'sentry_gun_right', count: 8 },
+            3: { id: 'barricade', type: 'placeable', name: 'Barricade', icon: 'barricade', count: 8 },
+            4: { id: 'minigun', type: 'weapon', name: 'Minigun', icon: 'minigun', ammo: 100 },
+            5: { id: 'pistol', type: 'weapon', name: 'Pistol', icon: 'pistol', ammo: 15 }
         }
     },
 
@@ -143,7 +145,7 @@ export const GameConfig = {
                 name: 'Charlie',
                 color: 0x0099ff,
                 formationOffset: { x: -60, y: -20 },
-                weapon: 'pistol',
+                weapon: 'machineGun',
                 aggroRange: 280,
                 followDistance: 60,
                 maxSeparation: 220,
@@ -165,7 +167,7 @@ export const GameConfig = {
                 name: 'Alpha',
                 color: 0x00ff00,
                 formationOffset: { x: -50, y: 40 },
-                weapon: 'pistol',
+                weapon: 'machineGun',
                 aggroRange: 250,
                 followDistance: 60,
                 maxSeparation: 200,
@@ -218,8 +220,8 @@ export const GameConfig = {
             health: 150,
             damage: 40,
             range: 350,
-            fireRate: 600,       // ms between shots
-            turnSpeed: 2,        // radians per second
+            fireRate: 600,       
+            turnSpeed: 2,        
             placementDistance: 80,
             collisionRadius: 60
         },
@@ -255,6 +257,15 @@ export const GameConfig = {
             reloadTime: 1500,   // ms
             bulletSpeed: 600,
             spread: 0.05        // radians
+        },
+        
+        minigun: {
+            damage: 40,
+            fireRate: 50,       // ms between shots - very fast
+            ammo: 100,
+            reloadTime: 3000,   // ms - longer reload
+            bulletSpeed: 700,
+            spread: 0.12        // radians - slightly wider spread due to high fire rate
         }
     },
 
@@ -313,22 +324,6 @@ export const GameConfig = {
     },
 
     /**
-     * Apply difficulty modifiers to base values
-     */
-    getZombieStats() {
-        const difficulty = this.getDifficulty();
-        const base = this.zombies;
-        
-        if (!difficulty) return base; // Use base values for custom difficulty
-        
-        return {
-            ...base,
-            health: Math.round(base.health * difficulty.zombieHealthMultiplier),
-            speed: Math.round(base.speed * difficulty.zombieSpeedMultiplier)
-        };
-    },
-
-    /**
      * Get wave settings with difficulty applied
      */
     getWaveSettings() {
@@ -342,6 +337,98 @@ export const GameConfig = {
             zombiesFirstWave: difficulty.zombiesFirstWave,
             zombiesWaveIncrement: difficulty.zombiesWaveIncrement,
             zombieSpawnDelay: difficulty.zombieSpawnDelay
+        };
+    },
+
+    /**
+     * Get progressive difficulty scaling based on wave number
+     * This makes the game progressively harder regardless of base difficulty
+     */
+    getProgressiveScaling(waveNumber) {
+        // Progressive scaling that increases each wave
+        const wave = Math.max(1, waveNumber || 1);
+        
+        // Progressive multipliers (start at 1.0, increase gradually)
+        const healthScaling = 1.0 + (wave - 1) * 0.08; // +8% health per wave
+        const speedScaling = 1.0 + (wave - 1) * 0.04; // +4% speed per wave  
+        const spawnRateScaling = Math.max(0.5, 1.0 - (wave - 1) * 0.06); // -6% spawn delay per wave (min 50% of original)
+        
+        // Cap the scaling to prevent it from getting too extreme
+        const maxHealthMultiplier = 3.0; // Max 300% health at wave 26+
+        const maxSpeedMultiplier = 2.5; // Max 250% speed at wave 38+
+        const minSpawnDelayMultiplier = 0.2; // Min 20% spawn delay (5x faster spawning)
+        
+        return {
+            healthMultiplier: Math.min(healthScaling, maxHealthMultiplier),
+            speedMultiplier: Math.min(speedScaling, maxSpeedMultiplier),
+            spawnDelayMultiplier: Math.max(spawnRateScaling, minSpawnDelayMultiplier),
+            waveNumber: wave
+        };
+    },
+
+    /**
+     * Get zombie stats with both difficulty and progressive scaling applied
+     */
+    getZombieStats(waveNumber = 1) {
+        const difficulty = this.getDifficulty();
+        const base = this.zombies;
+        const progressive = this.getProgressiveScaling(waveNumber);
+        
+        // Start with base difficulty multipliers (or 1.0 for custom)
+        const difficultyHealthMult = difficulty ? difficulty.zombieHealthMultiplier : 1.0;
+        const difficultySpeedMult = difficulty ? difficulty.zombieSpeedMultiplier : 1.0;
+        
+        // Apply progressive scaling on top of difficulty
+        const finalHealthMult = difficultyHealthMult * progressive.healthMultiplier;
+        const finalSpeedMult = difficultySpeedMult * progressive.speedMultiplier;
+        
+        const scaledStats = {
+            ...base,
+            health: Math.round(base.health * finalHealthMult),
+            speed: Math.round(base.speed * finalSpeedMult),
+            // Store scaling info for debugging
+            _scaling: {
+                wave: waveNumber,
+                baseHealth: base.health,
+                baseSpeed: base.speed,
+                difficultyHealthMult: difficultyHealthMult,
+                difficultySpeedMult: difficultySpeedMult,
+                progressiveHealthMult: progressive.healthMultiplier,
+                progressiveSpeedMult: progressive.speedMultiplier,
+                finalHealth: Math.round(base.health * finalHealthMult),
+                finalSpeed: Math.round(base.speed * finalSpeedMult)
+            }
+        };
+        
+        return scaledStats;
+    },
+
+    /**
+     * Get wave settings with progressive spawn rate scaling
+     */
+    getWaveSettings(waveNumber = 1) {
+        const difficulty = this.getDifficulty();
+        const base = this.waves;
+        const progressive = this.getProgressiveScaling(waveNumber);
+        
+        if (!difficulty) return base; // Use base values for custom difficulty
+        
+        // Apply progressive scaling to spawn delay
+        const baseSpawnDelay = difficulty.zombieSpawnDelay;
+        const scaledSpawnDelay = Math.round(baseSpawnDelay * progressive.spawnDelayMultiplier);
+        
+        return {
+            ...base,
+            zombiesFirstWave: difficulty.zombiesFirstWave,
+            zombiesWaveIncrement: difficulty.zombiesWaveIncrement,
+            zombieSpawnDelay: scaledSpawnDelay,
+            // Store scaling info for debugging
+            _scaling: {
+                wave: waveNumber,
+                baseSpawnDelay: baseSpawnDelay,
+                spawnDelayMultiplier: progressive.spawnDelayMultiplier,
+                finalSpawnDelay: scaledSpawnDelay
+            }
         };
     },
 
@@ -470,6 +557,81 @@ export const GameConfig = {
             console.warn('SquadGenerator not available for preview');
             return [];
         }
+    },
+
+    /**
+     * Debug method: Preview progressive scaling for a specific wave
+     * Can be called from console: GameConfig.previewWaveScaling(10)
+     */
+    previewWaveScaling(waveNumber) {
+        const wave = Math.max(1, waveNumber || 1);
+        const progressiveScaling = this.getProgressiveScaling(wave);
+        const zombieStats = this.getZombieStats(wave);
+        const waveSettings = this.getWaveSettings(wave);
+        
+        console.log(`🌊 WAVE ${wave} PROGRESSIVE SCALING PREVIEW`);
+        console.log('='.repeat(50));
+        console.log(`🧟 Zombie Stats:`);
+        console.log(`  Health: ${zombieStats.health} HP (${progressiveScaling.healthMultiplier.toFixed(2)}x base)`);
+        console.log(`  Speed: ${zombieStats.speed} (${progressiveScaling.speedMultiplier.toFixed(2)}x base)`);
+        console.log(`  Damage: ${zombieStats.damage} (unchanged)`);
+        
+        console.log(`\n⏰ Spawn Settings:`);
+        console.log(`  Spawn Delay: ${waveSettings.zombieSpawnDelay}ms (${progressiveScaling.spawnDelayMultiplier.toFixed(2)}x base)`);
+        console.log(`  Spawn Rate: ${((1 - progressiveScaling.spawnDelayMultiplier) * 100).toFixed(0)}% faster than base`);
+        
+        console.log(`\n📈 Progressive Multipliers:`);
+        console.log(`  Health Increase: +${((progressiveScaling.healthMultiplier - 1) * 100).toFixed(0)}%`);
+        console.log(`  Speed Increase: +${((progressiveScaling.speedMultiplier - 1) * 100).toFixed(0)}%`);
+        console.log(`  Spawn Rate Increase: +${((1 - progressiveScaling.spawnDelayMultiplier) * 100).toFixed(0)}%`);
+        
+        console.log(`\n🎯 Base Stats (Wave 1):`);
+        const baseStats = this.getZombieStats(1);
+        const baseWaveSettings = this.getWaveSettings(1);
+        console.log(`  Base Health: ${baseStats.health} HP`);
+        console.log(`  Base Speed: ${baseStats.speed}`);
+        console.log(`  Base Spawn Delay: ${baseWaveSettings.zombieSpawnDelay}ms`);
+        
+        return {
+            wave: wave,
+            zombieStats: zombieStats,
+            waveSettings: waveSettings,
+            progressiveScaling: progressiveScaling
+        };
+    },
+
+    /**
+     * Debug method: Show progressive scaling curve for multiple waves
+     * Can be called from console: GameConfig.showScalingCurve(1, 20)
+     */
+    showScalingCurve(startWave = 1, endWave = 20) {
+        console.log(`🌊 PROGRESSIVE SCALING CURVE (Waves ${startWave}-${endWave})`);
+        console.log('='.repeat(70));
+        console.log('Wave | Health  | Speed   | Spawn Rate | Health% | Speed% | Spawn%');
+        console.log('-'.repeat(70));
+        
+        for (let wave = startWave; wave <= endWave; wave++) {
+            const scaling = this.getProgressiveScaling(wave);
+            const zombieStats = this.getZombieStats(wave);
+            const waveSettings = this.getWaveSettings(wave);
+            
+            const healthPercent = ((scaling.healthMultiplier - 1) * 100).toFixed(0);
+            const speedPercent = ((scaling.speedMultiplier - 1) * 100).toFixed(0);
+            const spawnPercent = ((1 - scaling.spawnDelayMultiplier) * 100).toFixed(0);
+            
+            console.log(
+                `${wave.toString().padStart(4)} | ` +
+                `${zombieStats.health.toString().padStart(7)} | ` +
+                `${zombieStats.speed.toString().padStart(7)} | ` +
+                `${waveSettings.zombieSpawnDelay.toString().padStart(10)}ms | ` +
+                `${('+' + healthPercent + '%').padStart(7)} | ` +
+                `${('+' + speedPercent + '%').padStart(6)} | ` +
+                `${('+' + spawnPercent + '%').padStart(6)}`
+            );
+        }
+        
+        console.log('-'.repeat(70));
+        console.log('💡 Use GameConfig.previewWaveScaling(wave) for detailed info on specific waves');
     }
 };
 
@@ -483,6 +645,11 @@ if (typeof window !== 'undefined') {
     console.log('  GameConfig.previewSquadFormation() - Preview current formation');
     console.log('  GameConfig.previewSquadFormation(15) - Preview specific size');
     console.log('  GameConfig.getDifficultyNames()');
+    console.log('  🌊 PROGRESSIVE SCALING:');
+    console.log('  GameConfig.previewWaveScaling(10) - See scaling for specific wave');
+    console.log('  GameConfig.showScalingCurve(1, 20) - Show scaling curve for waves 1-20');
+    console.log('  GameConfig.getProgressiveScaling(wave) - Get raw scaling data');
     console.log('  GameConfig.currentDifficulty =', GameConfig.currentDifficulty);
     console.log('  Current squad size:', GameConfig.getSquadSize(), 'members');
+    console.log('  🎯 Progressive difficulty makes zombies +8% health, +4% speed, +6% spawn rate per wave!');
 } 

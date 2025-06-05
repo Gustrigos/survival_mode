@@ -2,7 +2,7 @@ import { ZombieSpriteManager } from '../utils/ZombieSpriteManager.js';
 import { GameConfig } from '../utils/GameConfig.js';
 
 export class Zombie extends Phaser.Physics.Arcade.Sprite {
-    constructor(scene, x, y) {
+    constructor(scene, x, y, zombieStats = null) {
         const useSheet = scene.textures.exists('zombie_sprite');
         const textureKey = useSheet ? 'zombie_sprite' : 'zombie_down';
         const frame = useSheet ? ZombieSpriteManager.getFrame('down') : 0;
@@ -12,40 +12,40 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         scene.add.existing(this);
         scene.physics.add.existing(this);
         
-        // Get zombie stats from config (includes difficulty modifiers)
-        const zombieStats = GameConfig.getZombieStats();
+        // Get zombie stats - use passed stats if available, otherwise get from config (for backward compatibility)
+        const stats = zombieStats || GameConfig.getZombieStats();
         
-        // Zombie properties - use config values
+        // Zombie properties - use progressive stats
         this.scene = scene;
-        this.health = zombieStats.health;
-        this.maxHealth = zombieStats.health;
-        this.speed = zombieStats.speed + Math.random() * zombieStats.speedVariation - zombieStats.speedVariation/2; // Random speed variation
-        this.damage = zombieStats.damage;
+        this.health = stats.health;
+        this.maxHealth = stats.health;
+        this.speed = stats.speed + Math.random() * stats.speedVariation - stats.speedVariation/2; // Random speed variation
+        this.damage = stats.damage;
         
         // AI properties - use config values
         this.direction = 'down';
         this.lastDirectionChange = 0;
-        this.directionChangeInterval = zombieStats.directionChangeInterval;
-        this.attackCooldown = zombieStats.attackCooldown;
+        this.directionChangeInterval = stats.directionChangeInterval;
+        this.attackCooldown = stats.attackCooldown;
         this.lastAttackTime = 0;
         
         // Barricade attack properties - use config values
         this.targetBarricade = null; // Barricade the zombie is trying to destroy
         this.lastBarricadeAttackTime = 0;
-        this.barricadeAttackCooldown = zombieStats.barricadeAttackCooldown;
-        this.barricadeAttackRange = zombieStats.barricadeAttackRange;
-        this.barricadeAttackDamage = zombieStats.barricadeAttackDamage;
+        this.barricadeAttackCooldown = stats.barricadeAttackCooldown;
+        this.barricadeAttackRange = stats.barricadeAttackRange;
+        this.barricadeAttackDamage = stats.barricadeAttackDamage;
         
         // Sandbag attack properties - use config values
         this.lastSandbagAttackTime = 0;
-        this.sandbagAttackCooldown = zombieStats.sandbagAttackCooldown;
-        this.sandbagAttackRange = zombieStats.sandbagAttackRange;
-        this.sandbagAttackDamage = zombieStats.sandbagAttackDamage;
+        this.sandbagAttackCooldown = stats.sandbagAttackCooldown;
+        this.sandbagAttackRange = stats.sandbagAttackRange;
+        this.sandbagAttackDamage = stats.sandbagAttackDamage;
         
         // Knockback properties - use config values
         this.isKnockedBack = false;
         this.knockbackEndTime = 0;
-        this.knockbackResistance = zombieStats.knockbackResistance;
+        this.knockbackResistance = stats.knockbackResistance;
         
         // Animation
         this.walkAnimSpeed = 600; // Slower than player
@@ -53,8 +53,11 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         this.animFrame = 0;
         
         // Movement behavior - use config values
-        this.randomMovementForce = zombieStats.randomMovementForce;
-        this.aggroRange = zombieStats.aggroRange;
+        this.randomMovementForce = stats.randomMovementForce;
+        this.aggroRange = stats.aggroRange;
+        
+        // Store progressive scaling info for debugging (if available)
+        this.scalingInfo = stats._scaling || null;
         
         // Set up physics body - make it cover the full visible sprite, same as player
         this.setCollideWorldBounds(true);
@@ -98,7 +101,6 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
         
         // Set initial texture
         this.setTexture(textureKey);
-
     }
     
     update(time, delta) {

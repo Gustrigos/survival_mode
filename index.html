@@ -24,17 +24,52 @@
       
       #ui {
         position: absolute;
-        top: 20px;
-        left: 20px;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         color: white;
-        font-size: 18px;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-        z-index: 1000;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 15px;
-        border-radius: 10px;
-        border: 2px solid #e74c3c;
-        pointer-events: none; /* Prevent UI from blocking game input */
+        font-size: 14px;
+        z-index: 2100; /* Above game inventory which is at depth 2001-2004 */
+        pointer-events: none;
+        background: none;
+        padding: 0;
+        border: none;
+        opacity: 0; /* Hidden by default */
+        transition: opacity 0.3s ease;
+      }
+      
+      /* Show UI when game is active */
+      #ui.game-active {
+        opacity: 1;
+      }
+      
+      #hud-wrapper {
+        position: relative;
+        width: 478px; /* Match game inventory width: 9*50 + 8*4 = 482px, adjusted */
+      }
+      
+      #health-bar-container {
+        position: absolute;
+        top: -60px; /* Increased from -40px to push higher above inventory */
+        left: 0;
+      }
+      
+      #ammo-bar-container {
+        position: absolute;
+        top: -60px; /* Increased from -40px to push higher above inventory */
+        right: 0;
+      }
+      
+      .ui-bar.hud-bar {
+        width: 160px;
+        height: 14px;
+        background: #34495e;
+        border: 2px solid #2c3e50;
+        border-radius: 7px;
+        overflow: hidden;
       }
       
       .ui-bar {
@@ -132,21 +167,131 @@
         transition: width 0.3s ease;
         border-radius: 5px;
       }
+      
+      /* Numeric labels inside bars */
+      .bar-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center; /* default center */
+        font-size: 10px;
+        color: #ecf0f1;
+        pointer-events: none;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      }
+      
+      /* Left- and right-aligned overrides */
+      #health-bar-container .bar-label {
+        justify-content: flex-start;
+        padding-left: 4px;
+      }
+      #ammo-bar-container .bar-label {
+        justify-content: flex-end;
+        padding-right: 4px;
+      }
+      
+      /* === Reload Animation Effects === */
+      #ammo-bar-container.reloading {
+        animation: reloadPulse 0.8s ease-in-out infinite;
+        box-shadow: 0 0 10px rgba(243, 156, 18, 0.6);
+      }
+      
+      .ui-fill.reloading {
+        animation: reloadShimmer 1.2s linear infinite;
+      }
+      
+      @keyframes reloadPulse {
+        0% { 
+          transform: scale(1); 
+          box-shadow: 0 0 8px rgba(243, 156, 18, 0.4);
+        }
+        50% { 
+          transform: scale(1.05); 
+          box-shadow: 0 0 15px rgba(243, 156, 18, 0.8);
+        }
+        100% { 
+          transform: scale(1); 
+          box-shadow: 0 0 8px rgba(243, 156, 18, 0.4);
+        }
+      }
+      
+      @keyframes reloadShimmer {
+        0% { 
+          background: linear-gradient(90deg, #e67e22, #f39c12);
+        }
+        25% { 
+          background: linear-gradient(90deg, #f39c12, #f1c40f);
+        }
+        50% { 
+          background: linear-gradient(90deg, #f1c40f, #f39c12);
+        }
+        75% { 
+          background: linear-gradient(90deg, #f39c12, #e67e22);
+        }
+        100% { 
+          background: linear-gradient(90deg, #e67e22, #f39c12);
+        }
+      }
+      
+      /* === Military Crate Announcement === */
+      #crate-announcement {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.9);
+        background: rgba(0, 0, 0, 0.85);
+        color: #f1c40f;
+        font-size: 32px;
+        font-weight: 700;
+        padding: 25px 50px;
+        border: 3px solid #e67e22;
+        border-radius: 12px;
+        box-shadow: 0 0 25px rgba(231, 76, 60, 0.9);
+        z-index: 2000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease, transform 0.5s ease;
+      }
+      
+      #crate-announcement.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+        animation: pulseGlow 1.6s ease-in-out infinite;
+      }
+      
+      @keyframes pulseGlow {
+        0% { box-shadow: 0 0 15px rgba(241, 196, 15, 0.7); }
+        50% { box-shadow: 0 0 30px rgba(241, 196, 15, 1); }
+        100% { box-shadow: 0 0 15px rgba(241, 196, 15, 0.7); }
+      }
     </style>
   </head>
   <body>
     <div id="game-container"></div>
     
+    <!-- Military crate announcement overlay -->
+    <div id="crate-announcement">MILITARY CRATES INCOMING! 📦</div>
+    
     <div id="ui">
-      <div>Health: <span id="health">100</span>/100</div>
-      <div class="ui-bar">
-        <div class="ui-fill health-fill" id="health-bar" style="width: 100%;"></div>
+      <div id="hud-wrapper">
+        <!-- Health bar (top-left) -->
+        <div id="health-bar-container" class="ui-bar hud-bar">
+          <div class="ui-fill health-fill" id="health-bar" style="width: 100%;"></div>
+          <span id="health" class="bar-label">100/100</span>
+        </div>
+        <!-- Ammo bar (top-right) -->
+        <div id="ammo-bar-container" class="ui-bar hud-bar">
+          <div class="ui-fill ammo-fill" id="ammo-bar" style="width: 100%;"></div>
+          <span id="ammo" class="bar-label">30/30</span>
+        </div>
+        <!-- Inventory rendered by game engine -->
       </div>
-      <div>Ammo: <span id="ammo">30</span>/30</div>
-      <div class="ui-bar">
-        <div class="ui-fill ammo-fill" id="ammo-bar" style="width: 100%;"></div>
-      </div>
-      <div id="reload-status"></div>
+      <!-- Reload status (appears above game inventory) -->
+      <div id="reload-status" style="margin-top: -20px; margin-bottom: 10px; text-align: center; color: #f39c12; font-weight: bold;"></div>
     </div>
     
     <div id="squad-status">

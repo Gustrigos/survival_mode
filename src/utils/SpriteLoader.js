@@ -77,6 +77,8 @@ export class SpriteLoader {
             scene.load.image(`weapon_${direction}`, `src/assets/sprites/weapons/weapon_${direction}.png`);
         });
         scene.load.image('machine_gun', 'src/assets/sprites/weapons/machine_gun.png');
+        scene.load.image('minigun', 'src/assets/sprites/weapons/minigun.png');
+        scene.load.image('pistol', 'src/assets/sprites/weapons/pistol.png');
         
         // Load sentry gun sprites
         scene.load.image('sentry_gun_right', 'src/assets/sprites/crafts/sentry_gun_right.png');

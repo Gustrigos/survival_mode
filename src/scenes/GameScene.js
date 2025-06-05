@@ -371,6 +371,7 @@ export class GameScene extends Phaser.Scene {
         console.log('🛡️ All game systems initialized, now creating sandbags...');
         try {
             this.createCrashSiteSandbags();
+            this.createCrashSiteBarricades(); // Add barricades to entrance gaps
             this.createCrashSiteMilitaryCrates();
         } catch (sandbagError) {
             console.error('❌ Error creating sandbags at end of create():', sandbagError);
@@ -382,34 +383,6 @@ export class GameScene extends Phaser.Scene {
         if (typeof window !== 'undefined') {
             window.gameScene = this;
             window.NPCPlayer = NPCPlayer; // Make NPCPlayer class available for debugging
-            console.log('🔧 GameScene available globally as window.gameScene');
-            console.log('🔧 Run gameScene.debugRoadLayout() to debug roads');
-            console.log('🔧 Run gameScene.enableSeamlessTerrain() to fix ALL terrain gaps');
-            console.log('🔧 Run gameScene.enableSeamlessRoads() to fix road gaps only');
-            console.log('');
-            console.log('🤖 NPC DEBUG CONTROLS:');
-            console.log('🔧 To enable debug for all NPCs: NPCPlayer.toggleAllDebug(gameScene, true)');
-            console.log('🔧 To disable debug for all NPCs: NPCPlayer.toggleAllDebug(gameScene, false)');
-            console.log('🔧 To debug individual NPC: gameScene.squadMembers.children.entries[0].enableDebug()');
-            console.log('🔧 Available NPCs: Charlie, Delta, Alpha, Bravo');
-            console.log('');
-            console.log('🎖️ DYNAMIC SQUAD SYSTEM:');
-            console.log('🔧 GameConfig.setCustomSquadSize(10) - Set 10 squad members');
-            console.log('🔧 GameConfig.setCustomSquadSize(20) - Set 20 squad members');
-            console.log('🔧 GameConfig.setCustomSquadSize(null) - Use difficulty default');
-            console.log('🔧 GameConfig.setDifficulty("apocalypse") - Test 20-member apocalypse mode');
-            console.log('🔧 GameConfig.previewSquadFormation(15) - Preview 15-member formation');
-            console.log('🔧 SquadGenerator.test(25) - Test squad generation with 25 members');
-            console.log('🔧 Current squad size:', GameConfig.getSquadSize(), 'members');
-            console.log('');
-            console.log('🌫️ FOG OF WAR SYSTEM:');
-            console.log('🔧 gameScene.clearFogOfWar() - Remove all fog instantly');
-            console.log('🔧 gameScene.fogGrid.size - Check how many fog tiles remain');
-            console.log('🔧 gameScene.exploredTiles.size - Check how many areas discovered');
-            console.log('🔧 gameScene.lastVisitedTimes.size - Check tracked areas for regeneration');
-            console.log('🔧 gameScene.generateSeamlessFogTexture() - Regenerate seamless fog');
-            console.log('🔧 Current fog tiles:', this.fogGrid.size, '| Explored areas:', this.exploredTiles.size);
-            console.log('🔧 DYNAMIC FOG: Areas re-fog after 45 seconds without visits - prevents wave 1 scouting exploit');
         }
         
         // Create inventory hotbar (Minecraft style)
@@ -623,9 +596,6 @@ export class GameScene extends Phaser.Scene {
             // Create crash site structures
             this.createCrashSiteStructures();
             
-            // Create urban barriers and defenses
-            this.createUrbanBarriers();
-            
             // Create sparse vegetation
             this.createUrbanVegetation();
             
@@ -657,8 +627,7 @@ export class GameScene extends Phaser.Scene {
         // Add some simple structures for gameplay
         const crashedHelicopter = this.add.rectangle(1000, 750, 240, 160, 0x2F4F4F);
         crashedHelicopter.setDepth(750);
-        this.physics.add.existing(crashedHelicopter, true);
-        crashedHelicopter.body.setImmovable(true);
+        this.physics.add.existing(crashedHelicopter, true); // true = static body (already immovable)
         crashedHelicopter.body.setSize(200, 120); // Match the collision box from Structure.js
         
         // Add collision for player
@@ -1144,6 +1113,128 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
+    createCrashSiteBarricades() {
+        console.log('🛡️ Creating defensive barricades in entrance gaps...');
+        
+        // Early safety check: ensure all required systems are ready
+        if (!this.textures || !this.physics || !this.player) {
+            console.error('❌ Required game systems not ready for barricade creation, skipping barricades');
+            return;
+        }
+        
+        // Check if barricade texture exists before proceeding
+        if (!this.textures.exists('barricade')) {
+            console.error('❌ Barricade texture not found, skipping barricade creation');
+            return;
+        }
+        
+        console.log('✅ Barricade texture found, proceeding with creation');
+        
+        try {
+            const helicopterX = 1000;
+            const helicopterY = 750;
+            
+            // Create barricades to partially block entrance gaps in the sandbag perimeter
+            // These positions correspond to the gaps left in the sandbag layout
+            const barricadePositions = [
+                // Main northern entrance - place barricades to create a chokepoint but not block completely
+                {x: helicopterX - 20, y: helicopterY - 180}, // Left side of northern gap
+                {x: helicopterX + 20, y: helicopterY - 180}, // Right side of northern gap
+                
+                // Southern entrances - create partial blocks
+                {x: helicopterX - 90, y: helicopterY + 180}, // Left southern entrance
+                {x: helicopterX + 80, y: helicopterY + 180}, // Right southern entrance
+                
+                // Western entrance - single barricade in center
+                {x: helicopterX - 250, y: helicopterY}, // Western entrance center
+                
+                // Eastern entrance - single barricade in center
+                {x: helicopterX + 250, y: helicopterY}, // Eastern entrance center
+                
+                // Additional tactical positions for better defense
+                {x: helicopterX - 40, y: helicopterY - 200}, // Forward left position
+                {x: helicopterX + 40, y: helicopterY - 200}, // Forward right position
+            ];
+            
+            console.log(`🛡️ Attempting to create ${barricadePositions.length} entrance barricades...`);
+            let successfulBarricades = 0;
+            
+            barricadePositions.forEach((pos, index) => {
+                try {
+                    console.log(`🛡️ Creating barricade ${index + 1}/${barricadePositions.length} at (${pos.x}, ${pos.y})`);
+                    const barricade = new Barricade(this, pos.x, pos.y);
+                    
+                    // Check if barricade creation was successful
+                    if (!barricade || !barricade.active || !barricade.isActive) {
+                        console.error('❌ Barricade creation failed at', pos.x, pos.y);
+                        return;
+                    }
+                    
+                    // Add to barricades list for updates
+                    if (!this.barricadesList) {
+                        this.barricadesList = [];
+                    }
+                    this.barricadesList.push(barricade);
+                    successfulBarricades++;
+                    
+                    // Set up solid collisions for this barricade (blocks movement) - only if has body
+                    if (barricade.body) {
+                        try {
+                            console.log('🛡️ Setting up colliders for entrance barricade...');
+                            
+                            // Set up colliders
+                            this.physics.add.collider(this.player, barricade, (player, barricadeObj) => {
+                                if (player && barricadeObj && player.active && barricadeObj.active) {
+                                }
+                            });
+                            
+                            this.physics.add.collider(this.squadMembers, barricade, (unit, barricadeObj) => {
+                                if (unit && barricadeObj && unit.active && barricadeObj.active) {
+                                }
+                            });
+                            
+                            this.physics.add.collider(this.zombies, barricade, (zombie, barricadeObj) => {
+                                if (zombie && barricadeObj && zombie.active && barricadeObj.active) {
+                                }
+                            });
+                            
+                            // Add friendly fire protection for this barricade
+                            this.physics.add.overlap(this.bullets, barricade, this.bulletHitBarricadeFriendly, null, this);
+                            
+                            console.log('✅ Colliders set up successfully for entrance barricade');
+                            
+                        } catch (colliderError) {
+                            console.error('❌ Error setting up barricade colliders (keeping barricade anyway):', colliderError);
+                        }
+                    } else {
+                        console.log('🛡️ Skipping collider setup for barricade without physics body');
+                    }
+                    
+                    console.log(`✅ Entrance barricade ${index + 1} placed successfully at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
+                    
+                } catch (barricadeError) {
+                    console.error(`❌ Critical error creating barricade ${index + 1} at`, pos.x, pos.y, ':', barricadeError);
+                }
+            });
+            
+            console.log(`🛡️ Entrance barricade creation complete: ${successfulBarricades}/${barricadePositions.length} successful`);
+            
+            if (successfulBarricades === 0) {
+                console.error('❌ No entrance barricades were created successfully!');
+            } else {
+                console.log(`✅ Created ${successfulBarricades} entrance barricades with strategic positioning:`);
+                console.log('   - Northern entrance: Partial chokepoint with side barricades');
+                console.log('   - Southern entrances: Individual barricades for each gap');
+                console.log('   - Eastern/Western entrances: Central blocking positions');
+                console.log('   - Forward positions: Advanced defensive cover');
+            }
+            
+        } catch (error) {
+            console.error('Error creating entrance barricades:', error);
+            console.error('❌ Falling back to no entrance barricades due to critical error');
+        }
+    }
+    
     createStructureWithFallback(x, y, textureKey, config, fallbackColor, width, height) {
         try {
             if (this.textures.exists(textureKey)) {
@@ -1193,73 +1284,7 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    createUrbanBarriers() {
-        console.log('Skipping urban barriers for simplified map...');
 
-        // Early exit: disable walls, sandbags, barricades to remove hidden obstacles
-        return;
-
-        /* The block below is kept for reference but will never execute
-        try {
-            // Compound walls around buildings
-            const wallPositions = [
-                // Around first building
-                {x: 320, y: 448}, {x: 384, y: 448}, {x: 448, y: 448},
-                {x: 320, y: 512}, {x: 320, y: 576}, {x: 448, y: 512}, {x: 448, y: 576},
-                {x: 320, y: 640}, {x: 384, y: 640}, {x: 448, y: 640},
-                
-                // Around crash site perimeter
-                {x: 700, y: 600}, {x: 764, y: 600}, {x: 828, y: 600},
-                {x: 1200, y: 600}, {x: 1264, y: 600}, {x: 1328, y: 600},
-                {x: 700, y: 900}, {x: 764, y: 900}, {x: 828, y: 900},
-                {x: 1200, y: 900}, {x: 1264, y: 900}, {x: 1328, y: 900}
-            ];
-            
-            wallPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'compound_wall', {
-                    type: 'compound_wall',
-                    material: 'concrete',
-                    health: 300,
-                    destructible: true
-                }, 0xA0A0A0, 64, 32);
-            });
-            
-            // Sandbag positions for defensive positions
-            const sandbagPositions = [
-                {x: 500, y: 600}, {x: 550, y: 650}, {x: 600, y: 700},
-                {x: 1400, y: 700}, {x: 1450, y: 750}, {x: 1500, y: 800}
-            ];
-            
-            sandbagPositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'sandbags', {
-                    type: 'sandbags',
-                    material: 'fabric',
-                    health: 150,
-                    destructible: true
-                }, 0xC2B280, 48, 32);
-            });
-            
-            // Barricades at key positions
-            const barricadePositions = [
-                {x: 352, y: 500}, {x: 352, y: 700}, {x: 1000, y: 500}, {x: 1000, y: 1000}
-            ];
-            
-            barricadePositions.forEach(pos => {
-                this.createStructureWithFallback(pos.x, pos.y, 'barricade', {
-                    type: 'barricade',
-                    material: 'wood',
-                    health: 80,
-                    destructible: true
-                }, 0x8B4513, 64, 24);
-            });
-            
-            console.log('Urban barriers created successfully');
-        } catch (error) {
-            console.error('Error creating urban barriers:', error);
-        }
-        */
-    }
-    
     createUrbanVegetation() {
         console.log('Creating sparse urban vegetation...');
         
@@ -1893,8 +1918,10 @@ export class GameScene extends Phaser.Scene {
         
         this.zombieSpawnTimer += delta;
         
-        // Use config spawn delay
-        const waveSettings = GameConfig.getWaveSettings();
+        // Use progressive spawn delay for current wave
+        const currentWave = window.gameState.wave || 1;
+        const waveSettings = GameConfig.getWaveSettings(currentWave);
+        
         if (this.zombiesSpawned < this.zombiesInWave && this.zombieSpawnTimer > waveSettings.zombieSpawnDelay) {
             this.spawnZombie();
             this.zombieSpawnTimer = 0;
@@ -1939,9 +1966,21 @@ export class GameScene extends Phaser.Scene {
             attempts++;
         } while (Phaser.Math.Distance.Between(spawnX, spawnY, playerX, playerY) < minDistanceFromPlayer && attempts < GameConfig.spawning.maxSpawnAttempts);
         
+        // Get progressive zombie stats for current wave
+        const currentWave = window.gameState.wave || 1;
+        const zombieStats = GameConfig.getZombieStats(currentWave);
         
-        const zombie = new Zombie(this, spawnX, spawnY);
+        const zombie = new Zombie(this, spawnX, spawnY, zombieStats);
         this.zombies.add(zombie);
+        
+        // Log progressive scaling info for first zombie of each wave
+        if (this.zombiesSpawned === 1) {
+            console.log(`🧟 Wave ${currentWave} zombie stats:`, {
+                health: zombieStats.health,
+                speed: zombieStats.speed,
+                scaling: zombieStats._scaling
+            });
+        }
         
         window.updateUI.zombiesLeft(this.zombiesInWave - this.zombies.children.size);
     }
@@ -2128,10 +2167,12 @@ export class GameScene extends Phaser.Scene {
             });
         }
         
-        // Check for solid structures that block bullets (excluding sandbags which bullets pass through)
+        // Check for solid structures that block bullets (excluding sandbags and barricades which bullets pass through)
         if (this.structures) {
             this.structures.children.entries.forEach(structure => {
-                if (structure && structure.active && structure.structureType !== 'sandbags') {
+                if (structure && structure.active && 
+                   structure.structureType !== 'sandbags' && 
+                   structure.structureType !== 'barricade') {
                     // Only check large structures that actually block bullets
                     if (structure.structureType === 'crashed_helicopter' || 
                         structure.structureType === 'concrete_building' ||
@@ -2161,6 +2202,10 @@ export class GameScene extends Phaser.Scene {
                 }
             });
         }
+        
+        // Also check barricades in barricadesList (but allow shooting through them)
+        // Note: We don't block line of sight for barricades since bullets pass through them
+        // This comment is here for clarity - barricades are intentionally excluded from blocking
         
         // Check each friendly unit for line-of-sight obstruction
         for (const friendly of friendlyUnits) {
@@ -2364,13 +2409,15 @@ export class GameScene extends Phaser.Scene {
             window.gameState.wave++;
         }
         
-        // Set zombies per wave using config
-        const waveSettings = GameConfig.getWaveSettings();
-        if (window.gameState.wave === 1) {
+        // Set zombies per wave using progressive scaling
+        const currentWave = window.gameState.wave;
+        const waveSettings = GameConfig.getWaveSettings(currentWave);
+        
+        if (currentWave === 1) {
             this.zombiesInWave = waveSettings.zombiesFirstWave;
         } else {
             this.zombiesInWave = Math.min(
-                waveSettings.zombiesFirstWave + (window.gameState.wave - 1) * waveSettings.zombiesWaveIncrement,
+                waveSettings.zombiesFirstWave + (currentWave - 1) * waveSettings.zombiesWaveIncrement,
                 waveSettings.maxZombiesPerWave
             );
         }
@@ -2378,25 +2425,47 @@ export class GameScene extends Phaser.Scene {
         this.zombiesSpawned = 0;
         this.isWaveActive = true;
         
+        // Get progressive scaling info for display
+        const progressiveScaling = GameConfig.getProgressiveScaling(currentWave);
+        const zombieStats = GameConfig.getZombieStats(currentWave);
+        
+        // Log progressive difficulty info
+        console.log(`🌊 Wave ${currentWave} Progressive Scaling:`, {
+            zombieCount: this.zombiesInWave,
+            spawnDelay: `${waveSettings.zombieSpawnDelay}ms (${waveSettings._scaling?.spawnDelayMultiplier.toFixed(2)}x)`,
+            zombieHealth: `${zombieStats.health} (${progressiveScaling.healthMultiplier.toFixed(2)}x)`,
+            zombieSpeed: `${zombieStats.speed} (${progressiveScaling.speedMultiplier.toFixed(2)}x)`,
+            progressiveMultipliers: {
+                health: `+${((progressiveScaling.healthMultiplier - 1) * 100).toFixed(0)}%`,
+                speed: `+${((progressiveScaling.speedMultiplier - 1) * 100).toFixed(0)}%`,
+                spawnRate: `${((1 - progressiveScaling.spawnDelayMultiplier) * 100).toFixed(0)}% faster`
+            }
+        });
+        
         // Spawn random military crates with each wave (after wave 1)
-        if (window.gameState.wave > 1) {
-            const cratesPerWave = Math.min(window.gameState.wave - 1, 3); // 1-3 crates per wave
-            console.log(`📦 Spawning ${cratesPerWave} random crates for wave ${window.gameState.wave}`);
+        if (currentWave > 1) {
+            const cratesPerWave = Math.min(currentWave - 1, 3); // 1-3 crates per wave
+            console.log(`📦 Spawning ${cratesPerWave} random crates for wave ${currentWave}`);
             this.spawnRandomCrates(cratesPerWave);
         }
         
         
-        window.updateUI.wave(window.gameState.wave);
+        window.updateUI.wave(currentWave);
         window.updateUI.zombiesLeft(this.zombiesInWave);
         
-        // Show wave start message
+        // Enhanced wave start message with scaling info
+        const scalingText = currentWave > 1 ? 
+            `\n+${((progressiveScaling.healthMultiplier - 1) * 100).toFixed(0)}% Health, +${((progressiveScaling.speedMultiplier - 1) * 100).toFixed(0)}% Speed` : 
+            '';
+        
         const waveStartText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 
-            `Wave ${window.gameState.wave}`, {
-            fontSize: '48px',
-            fill: '#ff0000',
+            `Wave ${currentWave}${scalingText}`, {
+            fontSize: currentWave > 1 ? '42px' : '48px',
+            fill: currentWave > 1 ? '#ff6600' : '#ff0000',
             fontFamily: 'Courier New',
             stroke: '#000000',
-            strokeThickness: 6
+            strokeThickness: 6,
+            align: 'center'
         }).setOrigin(0.5).setScrollFactor(0);
         
         this.tweens.add({
@@ -2492,14 +2561,218 @@ export class GameScene extends Phaser.Scene {
     }
     
     gameOver() {
-        // Clean up placement preview before transitioning
-        this.destroyPlacementPreview();
+        console.log('🎮 Game Over - Starting cleanup...');
+        
+        // Comprehensive cleanup before scene transition
+        this.cleanupBeforeDestroy();
         
         this.scene.start('GameOverScene', {
             score: window.gameState.score,
             wave: window.gameState.wave,
             zombiesKilled: window.gameState.zombiesKilled
         });
+    }
+    
+    /**
+     * Comprehensive cleanup method to prevent destroy errors
+     * Called before scene shutdown
+     */
+    cleanupBeforeDestroy() {
+        console.log('🧹 Starting comprehensive scene cleanup...');
+        
+        try {
+            // 1. Clean up placement preview system
+            this.destroyPlacementPreview();
+            
+            // 2. Clean up command wheel system
+            this.forceCleanupCommandWheel();
+            
+            // 3. Clean up ping system
+            this.forceCleanupPings();
+            
+            // 4. Clean up move cursor
+            this.hideMoveCursor();
+            
+            // 5. Clean up squad UI elements
+            this.cleanupSquadUI();
+            
+            // 6. Remove input listeners
+            this.removeInputListeners();
+            
+            // 7. Clean up tweens
+            this.cleanupAllTweens();
+            
+            // 8. Clear object references
+            this.clearObjectReferences();
+            
+            console.log('✅ Scene cleanup completed successfully');
+            
+        } catch (error) {
+            console.warn('⚠️ Error during scene cleanup:', error);
+            // Continue with scene transition even if cleanup fails
+        }
+    }
+    
+    /**
+     * Force cleanup of command wheel elements
+     */
+    forceCleanupCommandWheel() {
+        try {
+            // Stop input listeners
+            if (this.input) {
+                this.input.off('pointermove', this.updateCommandWheelSelection, this);
+            }
+            
+            // Destroy all command wheel elements
+            if (this.commandWheelElements && Array.isArray(this.commandWheelElements)) {
+                this.commandWheelElements.forEach(element => {
+                    if (element && element.active && typeof element.destroy === 'function') {
+                        try {
+                            this.tweens.killTweensOf(element);
+                            element.destroy();
+                        } catch (destroyError) {
+                            console.warn('Error destroying command wheel element:', destroyError);
+                        }
+                    }
+                });
+            }
+            
+            // Clear references
+            this.commandWheel = null;
+            this.commandWheelElements = [];
+            this.commandWheelBg = null;
+            this.commandTitleText = null;
+            this.commandInstructions = null;
+            this.followZone = null;
+            this.followText = null;
+            this.holdZone = null;
+            this.holdText = null;
+            this.moveZone = null;
+            this.moveText = null;
+            this.selectionIndicator = null;
+            this.selectedCommand = null;
+            this.commandWheelCenter = null;
+            
+        } catch (error) {
+            console.warn('Error in forceCleanupCommandWheel:', error);
+        }
+    }
+    
+    /**
+     * Force cleanup of ping markers and related objects
+     */
+    forceCleanupPings() {
+        try {
+            // Clean up ping marker
+            if (this.pingMarker) {
+                if (this.pingMarker.active && typeof this.pingMarker.destroy === 'function') {
+                    this.tweens.killTweensOf(this.pingMarker);
+                    this.pingMarker.destroy();
+                }
+                this.pingMarker = null;
+            }
+            
+            // Clean up ping text marker
+            if (this.pingTextMarker) {
+                if (this.pingTextMarker.active && typeof this.pingTextMarker.destroy === 'function') {
+                    this.tweens.killTweensOf(this.pingTextMarker);
+                    this.pingTextMarker.destroy();
+                }
+                this.pingTextMarker = null;
+            }
+            
+            // Clear references
+            this.pingTarget = null;
+            this.pingLocation = null;
+            
+        } catch (error) {
+            console.warn('Error in forceCleanupPings:', error);
+        }
+    }
+    
+    /**
+     * Clean up squad UI elements
+     */
+    cleanupSquadUI() {
+        try {
+            // Clean up squad mode UI elements
+            if (this.squadModeText && this.squadModeText.active) {
+                this.squadModeText.destroy();
+            }
+            this.squadModeText = null;
+            
+            if (this.squadInstructionText && this.squadInstructionText.active) {
+                this.squadInstructionText.destroy();
+            }
+            this.squadInstructionText = null;
+            
+        } catch (error) {
+            console.warn('Error in cleanupSquadUI:', error);
+        }
+    }
+    
+    /**
+     * Remove input event listeners
+     */
+    removeInputListeners() {
+        try {
+            if (this.input) {
+                // Remove any remaining pointermove listeners
+                this.input.off('pointermove');
+                
+                // Remove pointer down listeners
+                this.input.off('pointerdown');
+            }
+            
+        } catch (error) {
+            console.warn('Error removing input listeners:', error);
+        }
+    }
+    
+    /**
+     * Clean up all active tweens
+     */
+    cleanupAllTweens() {
+        try {
+            if (this.tweens) {
+                // Kill all tweens to prevent them from trying to operate on destroyed objects
+                this.tweens.killAll();
+            }
+        } catch (error) {
+            console.warn('Error cleaning up tweens:', error);
+        }
+    }
+    
+    /**
+     * Clear object references to prevent memory leaks
+     */
+    clearObjectReferences() {
+        try {
+            // Clear debug references
+            this.debugHighlights = null;
+            
+            // Clear move command references
+            this.moveCommandActive = false;
+            this.moveCursor = null;
+            this.moveCursorH = null;
+            this.moveCursorV = null;
+            this.moveCursorDot = null;
+            
+            // Clear fog system references (but don't destroy - let Phaser handle it)
+            // Just clear the maps to prevent memory leaks
+            if (this.fogGrid) {
+                this.fogGrid.clear();
+            }
+            if (this.exploredTiles) {
+                this.exploredTiles.clear();
+            }
+            if (this.lastVisitedTimes) {
+                this.lastVisitedTimes.clear();
+            }
+            
+        } catch (error) {
+            console.warn('Error clearing object references:', error);
+        }
     }
     
     setupCollisions() {
@@ -2620,7 +2893,7 @@ export class GameScene extends Phaser.Scene {
                 `Zombies: ${zombieCount}`,
                 `Squad Members: ${squadCount}`,
                 `Sentry Guns: ${sentryCount}`,
-                `Barricades: ${barricadeCount}`,
+                `Barricades: ${barricadeCount} (including entrance barriers)`,
                 `Sandbags: ${sandbagCount}`,
                 `Military Crates: ${militaryCrateCount}`,
                 `Slot ${this.player ? this.player.currentSlot : 1}: ${equipmentInfo}`,
@@ -5125,7 +5398,7 @@ export class GameScene extends Phaser.Scene {
         // Define the safe spawn area around helicopter crash site (no fog)
         const helicopterX = 1000;
         const helicopterY = 750;
-        const safeRadius = 200; // Initial explored area around crash site
+        const safeRadius = 250;
         
         let fogTilesCreated = 0;
         
@@ -5152,7 +5425,7 @@ export class GameScene extends Phaser.Scene {
         }
         
         console.log(`🌫️ Fog of war initialized: ${fogTilesCreated} fog tiles created`);
-        console.log(`🌫️ Safe area radius: ${safeRadius}px around helicopter crash site`);
+        console.log(`🌫️ Safe area radius: ${safeRadius}px around helicopter crash site (expanded for better starting area)`);
         console.log(`🌫️ Discovery radius: ${this.discoveryRadius}px`);
         console.log(`🌫️ Enhanced fog with seamless textures and randomization for smooth borders`);
     }
@@ -5392,86 +5665,22 @@ export class GameScene extends Phaser.Scene {
      * This prevents players from scouting everything in wave 1
      */
     regenerateOldFog() {
-        const currentTime = this.time.now;
-        const areasToRefog = [];
-        
-        // Check all previously visited areas
-        this.lastVisitedTimes.forEach((lastVisitTime, gridKey) => {
-            const timeSinceVisit = currentTime - lastVisitTime;
-            
-            // If area hasn't been visited for a while, mark for re-fogging
-            if (timeSinceVisit > this.fogDecayTime) {
-                areasToRefog.push(gridKey);
-            }
-        });
-        
-        // Re-fog old areas
-        areasToRefog.forEach(gridKey => {
-            this.refogArea(gridKey);
-        });
-        
-        if (areasToRefog.length > 0) {
-            console.log(`🌫️ Dynamic fog: Re-fogged ${areasToRefog.length} areas not visited recently`);
-        }
+        // Dynamic re-fogging disabled – once an area is explored it will stay clear.
+        // If re-fogging is needed again in the future, restore the previous implementation.
     }
     
     /**
-     * Re-fog a specific area by creating a new fog tile
+     * Phaser lifecycle method - called when scene is shut down
+     * This ensures cleanup happens even if gameOver() isn't called
      */
-    refogArea(gridKey) {
-        // Don't re-fog if already fogged
-        if (this.fogGrid.has(gridKey)) {
-            return;
-        }
+    shutdown() {
+        console.log('🔄 Scene shutdown triggered - performing cleanup...');
         
-        // Calculate world position from grid key
-        const [gridX, gridY] = gridKey.split(',').map(Number);
-        const worldX = gridX * this.fogTileSize;
-        const worldY = gridY * this.fogTileSize;
+        // Perform the same comprehensive cleanup
+        this.cleanupBeforeDestroy();
         
-        // Create new fog tile
-        const newFogTile = this.createFogTile(worldX, worldY);
-        
-        if (newFogTile) {
-            // Start with low alpha and fade in
-            newFogTile.setAlpha(0);
-            this.tweens.add({
-                targets: newFogTile,
-                alpha: 0.98,
-                duration: 1500,
-                ease: 'Power2.easeIn'
-            });
-            
-            // Remove from explored tiles and visit times
-            this.exploredTiles.delete(gridKey);
-            this.lastVisitedTimes.delete(gridKey);
-            
-            // Visual effect for re-fogging
-            this.createRefogEffect(worldX, worldY);
-        }
-    }
-    
-    /**
-     * Create a visual effect when an area becomes re-fogged
-     */
-    createRefogEffect(x, y) {
-        // Subtle gray mist effect
-        const effect = this.add.circle(x, y, 8, 0xAAAAAA, 0.4);
-        effect.setDepth(this.fogDepth + 1);
-        
-        this.tweens.add({
-            targets: effect,
-            scaleX: 3,
-            scaleY: 3,
-            alpha: 0,
-            duration: 2000,
-            ease: 'Power2.easeOut',
-            onComplete: () => {
-                if (effect && effect.active) {
-                    effect.destroy();
-                }
-            }
-        });
+        // Call parent shutdown
+        super.shutdown();
     }
 }
 
