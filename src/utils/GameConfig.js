@@ -78,7 +78,7 @@ export const GameConfig = {
 
     // === CURRENT DIFFICULTY ===
     // Change this to switch difficulty presets, or set to 'custom' for manual settings
-    currentDifficulty: 'apocalypse',
+    currentDifficulty: 'hard',
 
     // === CUSTOM SQUAD SIZE OVERRIDE ===
     // Set this to override the difficulty-based squad size
@@ -141,9 +141,11 @@ export const GameConfig = {
             healthPack: {
                 name: 'Health Pack',
                 cost: 50,   // 50 points = 5 zombie kills
-                description: 'Restores 50 health',
+                description: 'Restores 50 health to player and 30 health to all squad members',
                 type: 'consumable',
-                healAmount: 50
+                healAmount: 50,        // Amount to heal player
+                squadHealAmount: 30,   // Amount to heal each squad member
+                healsSquad: true       // Flag to indicate this heals the entire team
             }
         },
         
@@ -187,7 +189,7 @@ export const GameConfig = {
                 name: 'Charlie',
                 color: 0x0099ff,
                 formationOffset: { x: -60, y: -20 },
-                weapon: 'minigun',
+                weapon: 'machineGun',
                 aggroRange: 280,
                 followDistance: 60,
                 maxSeparation: 220,
@@ -198,7 +200,7 @@ export const GameConfig = {
                 name: 'Delta',
                 color: 0xff3333,
                 formationOffset: { x: 60, y: -20 },
-                weapon: 'minigun',
+                weapon: 'machineGun',
                 aggroRange: 320,
                 followDistance: 60,
                 maxSeparation: 220,
@@ -209,7 +211,7 @@ export const GameConfig = {
                 name: 'Alpha',
                 color: 0x00ff00,
                 formationOffset: { x: -50, y: 40 },
-                weapon: 'minigun',
+                weapon: 'machineGun',
                 aggroRange: 250,
                 followDistance: 60,
                 maxSeparation: 200,
@@ -220,7 +222,7 @@ export const GameConfig = {
                 name: 'Bravo',
                 color: 0xff8800,
                 formationOffset: { x: 50, y: 40 },
-                weapon: 'minigun',
+                weapon: 'machineGun',
                 aggroRange: 300,
                 followDistance: 60,
                 maxSeparation: 200,

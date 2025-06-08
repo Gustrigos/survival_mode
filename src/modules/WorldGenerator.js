@@ -69,28 +69,6 @@ export class WorldGenerator {
                 health: 1500,
                 destructible: false,
                 size: { width: 240, height: 160 }
-            },
-            building_ruins: {
-                textureKey: 'concrete_building',
-                rarity: 0.01,
-                minDistance: 200,
-                biomePreference: ['urban', 'wasteland'],
-                type: 'concrete_building',
-                material: 'concrete',
-                health: 800,
-                destructible: true,
-                size: { width: 128, height: 128 }
-            },
-            abandoned_vehicle: {
-                textureKey: 'vehicle_wreck',
-                rarity: 0.02,
-                minDistance: 150,
-                biomePreference: ['urban', 'desert', 'wasteland'],
-                type: 'vehicle_wreck',
-                material: 'metal',
-                health: 300,
-                destructible: true,
-                size: { width: 96, height: 64 }
             }
         };
 

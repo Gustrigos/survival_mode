@@ -82,10 +82,6 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
         
         // Check if bullet should be destroyed
         if (time - this.startTime > this.lifespan) {
-            console.log('⏰ BULLET EXPIRED (lifespan):', {
-                pos: { x: this.x.toFixed(2), y: this.y.toFixed(2) },
-                timeAlive: (time - this.startTime).toFixed(0) + 'ms'
-            });
             this.deactivate();
             return;
         }

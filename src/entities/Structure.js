@@ -91,10 +91,6 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
                 return { width: 70, height: 50, offsetX: 5, offsetY: 10 };
             case 'burning_wreckage':
                 return { width: 55, height: 40, offsetX: 4, offsetY: 8 };
-            case 'concrete_building':
-                return { width: 110, height: 70, offsetX: 9, offsetY: 26 };
-            case 'damaged_building':
-                return { width: 85, height: 60, offsetX: 5, offsetY: 20 };
             case 'compound_wall':
                 return { width: 60, height: 20, offsetX: 2, offsetY: 12 };
             case 'military_crate':
@@ -185,7 +181,7 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
         });
         
         // Screen shake for large structures
-        if (this.structureType === 'crashed_helicopter' || this.structureType === 'concrete_building') {
+        if (this.structureType === 'crashed_helicopter') {
             if (this.scene && this.scene.cameras && this.scene.cameras.main) {
                 this.scene.cameras.main.shake(150, 0.005);
             }
@@ -327,8 +323,6 @@ export class Structure extends Phaser.Physics.Arcade.Sprite {
     // Check if structure blocks line of sight
     blocksLineOfSight() {
         return this.structureType === 'crashed_helicopter' || 
-               this.structureType === 'concrete_building' || 
-               this.structureType === 'damaged_building' ||
                this.structureType === 'dead_tree';
     }
 } 

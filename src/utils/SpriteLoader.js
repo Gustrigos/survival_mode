@@ -30,7 +30,6 @@ export class SpriteLoader {
         this.loadEffectSprites(scene);
         this.loadEnvironmentSprites(scene);
         this.loadTerrainSprites(scene);
-        this.loadBuildingSprites(scene);
         
         console.log('PNG sprites loaded successfully');
     }
@@ -237,13 +236,6 @@ export class SpriteLoader {
         });
         
         console.log('🗺️ Terrain sprites queued for loading with cache busting');
-    }
-    
-    static loadBuildingSprites(scene) {
-        scene.load.image('wall', 'src/assets/sprites/buildings/wall.png');
-        scene.load.image('door', 'src/assets/sprites/buildings/door.png');
-        scene.load.image('window', 'src/assets/sprites/buildings/window.png');
-        scene.load.image('roof', 'src/assets/sprites/buildings/roof.png');
     }
 
     /**

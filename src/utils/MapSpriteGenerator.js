@@ -33,12 +33,6 @@ export class MapSpriteGenerator {
         this.createPalmTree(scene);
         this.createDeadTree(scene);
         
-        // Create building elements
-        this.createWall(scene);
-        this.createDoor(scene);
-        this.createWindow(scene);
-        this.createRoof(scene);
-        
         console.log('Simple environment sprites generated');
     }
     
@@ -582,96 +576,6 @@ export class MapSpriteGenerator {
         graphics.fillRect(1, 9, 14, 2);
         
         graphics.generateTexture('debris', 16, 16);
-        graphics.destroy();
-    }
-    
-    static createWall(scene) {
-        const graphics = scene.add.graphics();
-        
-        const outline = 0x000000;
-        const wallColor = 0xC0C0C0;
-        const wallShadow = 0x808080;
-        
-        graphics.fillStyle(outline);
-        graphics.fillRect(0, 0, 32, 32);
-        
-        graphics.fillStyle(wallColor);
-        graphics.fillRect(1, 1, 30, 30);
-        
-        graphics.fillStyle(wallShadow);
-        graphics.fillRect(16, 1, 15, 30);
-        graphics.fillRect(1, 16, 30, 15);
-        
-        graphics.generateTexture('wall', 32, 32);
-        graphics.destroy();
-    }
-    
-    static createDoor(scene) {
-        const graphics = scene.add.graphics();
-        
-        const outline = 0x000000;
-        const doorColor = 0x8B4513;
-        const doorLight = 0xA0522D;
-        const handleColor = 0xFFD700;
-        
-        graphics.fillStyle(outline);
-        graphics.fillRect(0, 0, 16, 24);
-        
-        graphics.fillStyle(doorColor);
-        graphics.fillRect(1, 1, 14, 22);
-        
-        graphics.fillStyle(doorLight);
-        graphics.fillRect(1, 1, 14, 3);
-        graphics.fillRect(1, 1, 3, 22);
-        
-        graphics.fillStyle(handleColor);
-        graphics.fillRect(11, 11, 2, 2);
-        
-        graphics.generateTexture('door', 16, 24);
-        graphics.destroy();
-    }
-    
-    static createWindow(scene) {
-        const graphics = scene.add.graphics();
-        
-        const outline = 0x000000;
-        const frameColor = 0x8B4513;
-        const glassColor = 0x87CEEB;
-        
-        graphics.fillStyle(outline);
-        graphics.fillRect(0, 0, 16, 16);
-        
-        graphics.fillStyle(frameColor);
-        graphics.fillRect(1, 1, 14, 14);
-        
-        graphics.fillStyle(glassColor);
-        graphics.fillRect(3, 3, 10, 10);
-        
-        graphics.fillStyle(outline);
-        graphics.fillRect(7, 3, 2, 10);
-        graphics.fillRect(3, 7, 10, 2);
-        
-        graphics.generateTexture('window', 16, 16);
-        graphics.destroy();
-    }
-    
-    static createRoof(scene) {
-        const graphics = scene.add.graphics();
-        
-        const outline = 0x000000;
-        const roofColor = 0x8B0000;
-        const roofLight = 0xDC143C;
-        
-        graphics.fillStyle(outline);
-        graphics.fillRect(0, 8, 32, 16);
-        
-        graphics.fillStyle(roofColor);
-        graphics.fillRect(1, 9, 30, 14);
-        
-        graphics.fillStyle(roofLight);
-        graphics.fillRect(1, 9, 30, 3);
-        
-        graphics.generateTexture('roof', 32, 24);
         graphics.destroy();
     }
     

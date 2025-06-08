@@ -780,17 +780,13 @@ export class NPCPlayer extends Player {
         if (this.scene.structures) {
             for (let structure of this.scene.structures.children.entries) {
                 if (structure.active && (structure.structureType === 'sandbags' || 
-                    structure.structureType === 'crashed_helicopter' ||
-                    structure.structureType === 'concrete_building' ||
-                    structure.structureType === 'damaged_building')) {
+                    structure.structureType === 'crashed_helicopter')) {
                     
                     const distance = Phaser.Math.Distance.Between(futureX, futureY, structure.x, structure.y);
                     
                     // Increased obstacle ranges for better detection
                     let obstacleRange = 50; // Increased from 40 to 50
-                    if (structure.structureType === 'crashed_helicopter') obstacleRange = 100; // Increased from 80
-                    else if (structure.structureType === 'concrete_building') obstacleRange = 75; // Increased from 60
-                    else if (structure.structureType === 'damaged_building') obstacleRange = 65; // Increased from 50
+                    if (structure.structureType === 'crashed_helicopter') obstacleRange = 100;
                     
                     if (distance < obstacleRange) {
                         return structure; // Return the obstacle
@@ -1623,9 +1619,7 @@ export class NPCPlayer extends Player {
         if (this.scene.structures) {
             this.scene.structures.children.entries.forEach(structure => {
                 if (structure.active && (structure.structureType === 'sandbags' || 
-                    structure.structureType === 'crashed_helicopter' ||
-                    structure.structureType === 'concrete_building' ||
-                    structure.structureType === 'damaged_building')) {
+                    structure.structureType === 'crashed_helicopter')) {
                     
                     const distance = Phaser.Math.Distance.Between(this.x, this.y, structure.x, structure.y);
                     if (distance < nearestDistance) {

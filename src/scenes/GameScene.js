@@ -2176,10 +2176,7 @@ export class GameScene extends Phaser.Scene {
                 if (structure && structure.active && 
                    structure.structureType !== 'sandbags' && 
                    structure.structureType !== 'barricade') {
-                    // Only check large structures that actually block bullets
-                    if (structure.structureType === 'crashed_helicopter' || 
-                        structure.structureType === 'concrete_building' ||
-                        structure.structureType === 'damaged_building') {
+                    if (structure.structureType === 'crashed_helicopter') {
                         
                         const distanceToLine = this.pointToLineDistance(
                             structure.x, structure.y,
@@ -2800,23 +2797,6 @@ export class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.squadMembers, this.zombies, this.playerHitZombie, null, this);
         this.physics.add.overlap(this.bullets, this.zombies, this.bulletHitZombie, null, this);
         this.physics.add.overlap(this.bullets, this.structures, this.bulletHitStructure, null, this);
-        
-        // REMOVED: Universal bullet collision detection for friendly fire prevention
-        // Bullets now pass through player and squad members completely invisibly
-        // this.physics.add.overlap(this.bullets, this.player, this.bulletHitFriendly, null, this);
-        // this.physics.add.overlap(this.bullets, this.squadMembers, this.bulletHitFriendly, null, this);
-        
-        // Sentry gun collisions - handle manually since we're not using physics groups
-        // We'll check collisions in the update method instead
-        
-        // Remove old sentry gun group collision setup
-        // this.physics.add.overlap(this.zombies, this.sentryGuns, this.zombieHitSentryGun, null, this);
-        // this.physics.add.overlap(this.bullets, this.sentryGuns, this.bulletHitSentryGun, null, this);
-        // this.physics.add.collider(this.player, this.sentryGuns);
-        // this.physics.add.collider(this.squadMembers, this.sentryGuns);
-        
-        // Set up solid collisions for sentry guns when they're placed
-        // This will be called from placeSentryGun method
         
         // Solid collisions with structures (keep these - important for gameplay)
         this.physics.add.collider(this.player, this.structures);
@@ -5164,7 +5144,7 @@ export class GameScene extends Phaser.Scene {
                 );
                 
                 // Collection radius (larger for easier pickup)
-                const collectionRadius = 50;
+                const collectionRadius = 35;
                 
                 if (distance < collectionRadius) {
                     const collected = crate.collectCrate(this.player);

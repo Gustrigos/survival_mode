@@ -100,6 +100,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
                 this.purchaseItems = GameConfig.getPurchasableItems();
                 this.selectedItem = 'sentryGun'; // Default selected item
                 this.isShoppingMode = false; // Whether the shopping interface is active
+                this.interfaceCooldown = false; // Prevent interface from reopening until player moves away
             }
             
             // Visual effect properties
@@ -298,9 +299,22 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         const playerPoints = window.gameState.score || 0;
         const purchaseItems = GameConfig.getPurchasableItems();
         
+        // FIXED: Prevent interface from opening multiple times
+        // Only show interface if it's not already open
+        if (this.purchaseUIElements) {
+            return false; // Interface already open, don't create another one
+        }
+        
+        // FIXED: Cooldown system - don't reopen until player moves away and comes back
+        if (this.interfaceCooldown) {
+            return false; // Interface on cooldown, player needs to move away first
+        }
+        
         // Store player reference for distance checking
         this.purchasingPlayer = player;
-        this.lastPlayerCheckTime = this.scene.time.now;
+        
+        // Set cooldown to prevent immediate reopening
+        this.interfaceCooldown = true;
         
         // Show purchase interface
         this.showPurchaseInterface(player, playerPoints, purchaseItems);
@@ -484,7 +498,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         });
         
         // Close button
-        this.closeButton = this.scene.add.text(centerX, centerY + 50, '[ESC] Close • Auto-closes when you move away', {
+        this.closeButton = this.scene.add.text(centerX, centerY + 50, '[ESC] Close • Closes instantly when you step away', {
             fontSize: '10px',
             fill: '#CCCCCC',
             fontFamily: 'Courier New',
@@ -506,7 +520,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         // Set up ESC key to close
         this.escKey = this.scene.input.keyboard.addKey('ESC');
         this.escKey.on('down', () => {
-            this.destroyPurchaseUI();
+            this.destroyPurchaseUI(true); // true = manual close, reset cooldown
         });
         
         console.log('🛒 Purchase interface created with auto-close and enhanced affordability styling');
@@ -561,7 +575,6 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         
         // Re-establish player reference for auto-close functionality
         this.purchasingPlayer = player;
-        this.lastPlayerCheckTime = this.scene.time.now;
     }
     
     showPurchaseSuccess(message, color = '#00FF00') {
@@ -609,7 +622,7 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         });
     }
     
-    destroyPurchaseUI() {
+    destroyPurchaseUI(manualClose = false) {
         if (this.purchaseUIElements) {
             this.purchaseUIElements.forEach(element => {
                 if (element && element.destroy) {
@@ -626,13 +639,18 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         
         // Clear player reference and auto-close functionality
         this.purchasingPlayer = null;
-        this.lastPlayerCheckTime = 0;
+        
+        // FIXED: Only reset cooldown when manually closed (ESC key)
+        // When auto-closed by distance, keep cooldown until player moves away
+        if (manualClose) {
+            this.interfaceCooldown = false;
+            console.log('🛒 Supply crate interface manually closed - cooldown reset');
+        }
         
         this.purchaseButtons = null;
     }
     
     handleLootCrateCollection(player) {
-        console.log(`📦 Player collecting ${this.contents.type} crate (${this.contents.amount})`);
         
         this.isCollected = true;
         this.isActive = false;
@@ -653,7 +671,6 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
                 }
                 success = true;
                 
-                console.log(`🔫 Player gained ${actualGained} ammo (${currentAmmo} → ${newAmmo})`);
             }
         } else if (this.contents.type === 'health') {
             // Add health to player
@@ -852,23 +869,30 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         
         // Check if player has moved away from supply crate (auto-close purchase UI)
         if (this.isSupplyCrate && this.purchasingPlayer && this.purchaseUIElements) {
-            const timeSinceLastCheck = time - this.lastPlayerCheckTime;
+            const distanceToPlayer = Phaser.Math.Distance.Between(
+                this.x, this.y, 
+                this.purchasingPlayer.x, this.purchasingPlayer.y
+            );
             
-            // Check distance every 100ms to avoid excessive calculations
-            if (timeSinceLastCheck > 100) {
-                const distanceToPlayer = Phaser.Math.Distance.Between(
-                    this.x, this.y, 
-                    this.purchasingPlayer.x, this.purchasingPlayer.y
-                );
-                
-                // Auto-close if player is too far away (80 pixels)
-                if (distanceToPlayer > 80) {
-                    console.log('🛒 Player moved away from supply crate, closing purchase interface');
-                    this.destroyPurchaseUI();
-                    this.purchasingPlayer = null;
-                }
-                
-                this.lastPlayerCheckTime = time;
+            // FIXED: Much smaller distance - interface disappears very quickly when player moves away
+            if (distanceToPlayer > 40) {
+                console.log('🛒 Player moved away from supply crate, closing purchase interface instantly');
+                this.destroyPurchaseUI();
+                this.purchasingPlayer = null;
+            }
+        }
+        
+        // FIXED: Reset cooldown when player moves far enough away from supply crate
+        if (this.isSupplyCrate && this.interfaceCooldown && this.scene.player) {
+            const distanceToPlayer = Phaser.Math.Distance.Between(
+                this.x, this.y, 
+                this.scene.player.x, this.scene.player.y
+            );
+            
+            // FIXED: Smaller cooldown reset distance - only need to step back a little
+            if (distanceToPlayer > 50) {
+                this.interfaceCooldown = false;
+                console.log('🛒 Supply crate cooldown reset - interface can open again when player approaches');
             }
         }
         
@@ -936,7 +960,6 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
             
             // Clean up purchasing state
             this.purchasingPlayer = null;
-            this.lastPlayerCheckTime = 0;
             
             // Clean up visual effects
             if (this.glowEffect) {

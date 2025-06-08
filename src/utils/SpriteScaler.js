@@ -12,12 +12,6 @@ export class SpriteScaler {
         crashed_helicopter: { targetWidth: 400, targetHeight: 250 },
         helicopter_wreckage: { targetWidth: 200, targetHeight: 125 },
         
-        // Building sprites
-        building: { targetWidth: 96, targetHeight: 72 },
-        wall: { targetWidth: 64, targetHeight: 32 },
-        door: { targetWidth: 32, targetHeight: 48 },
-        window: { targetWidth: 32, targetHeight: 32 },
-        
         // Environment sprites
         tree: { targetWidth: 48, targetHeight: 64 },
         palm_tree: { targetWidth: 48, targetHeight: 80 },
@@ -147,9 +141,6 @@ export class SpriteScaler {
         if (type.includes('zombie') || type.includes('enemy')) {
             return { targetWidth: 32, targetHeight: 48 };
         }
-        if (type.includes('building') || type.includes('house')) {
-            return { targetWidth: 96, targetHeight: 72 };
-        }
         if (type.includes('tree')) {
             return { targetWidth: 48, targetHeight: 64 };
         }
@@ -250,7 +241,7 @@ export class SpriteScaler {
         // Scale down commonly oversized sprites
         const oversizedSprites = [
             'crashed_helicopter', 'helicopter_wreckage', 'military_crate',
-            'concrete_building', 'damaged_building', 'palm_tree', 'dead_tree'
+            'palm_tree', 'dead_tree'
         ];
         
         oversizedSprites.forEach(spriteKey => {

@@ -274,14 +274,10 @@ export class Sandbag extends Phaser.Physics.Arcade.Sprite {
                 }
             }
             
-            console.log(`🛡️ Sandbag health check: ${this.health}/${this.maxHealth} HP, state: ${this.currentHealthState} -> ${newState}`);
-            
             // Change sprite if health state changed
             if (newState !== this.currentHealthState) {
                 this.currentHealthState = newState;
                 const newSprite = this.healthStates[newState].sprite;
-                
-                console.log(`🛡️ Sandbag health state changed to ${newState}, switching to sprite: ${newSprite}`);
                 
                 // Check if the new sprite texture exists, otherwise keep current sprite
                 if (!this.scene.textures.exists(newSprite)) {

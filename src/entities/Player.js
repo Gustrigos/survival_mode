@@ -387,14 +387,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         // Enhanced debugging for bullet creation
         const bulletStartX = playerCenterX + muzzleOffsetX;
         const bulletStartY = playerCenterY + muzzleOffsetY;
-        
-        console.log('🎯 BULLET CREATION:', {
-            direction: this.direction,
-            startPos: { x: bulletStartX.toFixed(2), y: bulletStartY.toFixed(2) },
-            velocity: { x: bulletVelX, y: bulletVelY },
-            muzzleOffset: { x: muzzleOffsetX, y: muzzleOffsetY },
-            bulletSpeed: this.bulletSpeed
-        });
 
         // Create bullet starting from player's collision box center
         const bullet = this.scene.bullets.get();
