@@ -14,6 +14,7 @@ import { SpriteScaler } from '../utils/SpriteScaler.js';
 import { GameConfig } from '../utils/GameConfig.js';
 import { SquadGenerator } from '../utils/SquadGenerator.js';
 import { WorldGenerator } from '../modules/WorldGenerator.js';
+import { TouchControls } from '../utils/TouchControls.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -338,6 +339,28 @@ export class GameScene extends Phaser.Scene {
         // Input
         this.cursors = this.input.keyboard.createCursorKeys();
         this.wasd = this.input.keyboard.addKeys('W,S,A,D,SPACE,R,E');
+        
+        // Initialize Touch Controls for PWA
+        console.log('🎮 Initializing touch controls for PWA...');
+        this.touchControls = new TouchControls(this);
+        
+        // Set up touch control event listeners
+        this.events.on('touch_shoot', (pressed) => {
+            if (pressed) {
+                this.handleSpaceKey();
+            }
+        });
+        
+        this.events.on('touch_reload', (pressed) => {
+            if (pressed) {
+                const equipment = this.player.getCurrentSlotEquipment();
+                if (equipment && equipment.type === 'weapon') {
+                    this.player.reload();
+                }
+            }
+        });
+        
+        console.log('✅ Touch controls initialized successfully');
         
         // Set up collisions
         this.setupCollisions();
@@ -1530,11 +1553,12 @@ export class GameScene extends Phaser.Scene {
     handleInput() {
         const player = this.player;
         
-        // Movement
+        // Movement - combine keyboard, touch, and gamepad input
         let velocityX = 0;
         let velocityY = 0;
         const speed = 200;
         
+        // Keyboard input
         const pressedKeys = [];
         if (this.wasd.A.isDown) {
             velocityX = -speed;
@@ -1553,10 +1577,32 @@ export class GameScene extends Phaser.Scene {
             pressedKeys.push('S');
         }
         
-        // Normalize diagonal movement
-        if (velocityX !== 0 && velocityY !== 0) {
-            velocityX *= 0.707;
-            velocityY *= 0.707;
+        // Touch/Gamepad input (additive to keyboard)
+        if (this.touchControls) {
+            const touchInput = this.touchControls.getMovementInput();
+            const gamepadInput = this.touchControls.getActionInput();
+            
+            // Add touch/gamepad movement
+            velocityX += touchInput.x * speed;
+            velocityY += touchInput.y * speed;
+            
+            // Handle gamepad action buttons
+            if (gamepadInput.shoot) {
+                this.handleSpaceKey();
+            }
+            if (gamepadInput.reload) {
+                const equipment = this.player.getCurrentSlotEquipment();
+                if (equipment && equipment.type === 'weapon') {
+                    this.player.reload();
+                }
+            }
+        }
+        
+        // Clamp combined input to speed limits
+        const inputMagnitude = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+        if (inputMagnitude > speed) {
+            velocityX = (velocityX / inputMagnitude) * speed;
+            velocityY = (velocityY / inputMagnitude) * speed;
         }
         
         player.setVelocity(velocityX, velocityY);
@@ -5714,8 +5760,20 @@ export class GameScene extends Phaser.Scene {
         // Perform the same comprehensive cleanup
         this.cleanupBeforeDestroy();
         
-        // Call parent shutdown
-        super.shutdown();
+        // Clean up touch controls
+        if (this.touchControls) {
+            this.touchControls.destroy();
+            this.touchControls = null;
+        }
+        
+        // Clean up events to prevent memory leaks
+        this.events.off('touch_shoot');
+        this.events.off('touch_reload');
+        
+        // Force cleanup of any remaining systems
+        this.cleanupBeforeDestroy();
+        
+        console.log('GameScene shutdown() completed');
     }
 }
 

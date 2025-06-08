@@ -1,5 +1,16 @@
 {
+  "name": "zombie-survival-pwa",
+  "version": "1.0.0",
+  "description": "Zombie Survival Game - Progressive Web App",
+  "scripts": {
+    "build-sw": "workbox generateSW workbox-config.js",
+    "serve": "python -m http.server 8080",
+    "serve-vite": "npx vite preview --host --port 5173"
+  },
   "dependencies": {
     "phaser": "^3.88.2"
+  },
+  "devDependencies": {
+    "workbox-cli": "^7.0.0"
   }
 }

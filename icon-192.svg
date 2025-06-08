@@ -1,0 +1,21 @@
+<svg width="192" height="192" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="192" height="192" fill="#2c3e50"/>
+  
+  <!-- Border -->
+  <rect x="10" y="10" width="172" height="172" fill="none" stroke="#e74c3c" stroke-width="4"/>
+  
+  <!-- Zombie skull -->
+  <circle cx="96" cy="80" r="35" fill="#e8e8e8"/>
+  
+  <!-- Eyes -->
+  <circle cx="82" cy="70" r="6" fill="#2c3e50"/>
+  <circle cx="110" cy="70" r="6" fill="#2c3e50"/>
+  
+  <!-- Mouth -->
+  <path d="M 75 95 Q 96 110 117 95" stroke="#e74c3c" stroke-width="4" fill="none"/>
+  
+  <!-- Text -->
+  <text x="96" y="140" text-anchor="middle" fill="#ecf0f1" font-family="Arial, sans-serif" font-size="14" font-weight="bold">ZOMBIE</text>
+  <text x="96" y="160" text-anchor="middle" fill="#ecf0f1" font-family="Arial, sans-serif" font-size="14" font-weight="bold">SURVIVAL</text>
+</svg> 
