@@ -2,22 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Zombie Survival - Phaser Edition</title>
-    
-    <!-- PWA Meta Tags -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2c3e50">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Zombie Survival">
-    
-    <!-- App Icons -->
-    <link rel="apple-touch-icon" href="icon-192.svg">
-    <link rel="icon" type="image/svg+xml" href="icon-192.svg">
-    <link rel="shortcut icon" href="icon-192.svg">
-    
     <style>
       body {
         margin: 0;
@@ -328,31 +314,5 @@
 
     <script src="node_modules/phaser/dist/phaser.min.js"></script>
     <script type="module" src="src/main.js"></script>
-    
-    <!-- Service Worker Registration -->
-    <script>
-      // Register service worker for PWA functionality
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('sw.js')
-            .then((registration) => {
-              console.log('SW registered: ', registration);
-            })
-            .catch((registrationError) => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
-      
-      // Handle iOS 18 cache storage bug
-      if ('storage' in navigator && 'estimate' in navigator.storage) {
-        navigator.storage.estimate().then(estimate => {
-          console.log('Storage quota:', estimate.quota);
-          console.log('Storage usage:', estimate.usage);
-        }).catch(error => {
-          console.warn('Storage estimate failed:', error);
-        });
-      }
-    </script>
   </body>
 </html> 
