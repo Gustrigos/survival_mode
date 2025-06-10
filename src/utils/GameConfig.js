@@ -160,6 +160,67 @@ export const GameConfig = {
         }
     },
 
+    // === RANDOM CRATE SPAWNING SYSTEM ===
+    // Control over random crates that spawn during waves
+    randomCrates: {
+        // Master switch - disable this to stop all random crate spawning
+        enabled: false,  // DISABLED: Players can only buy from main supply crate
+        
+        // How many crates spawn per wave (only if enabled)
+        cratesPerWave: {
+            min: 1,
+            max: 3,
+            // Formula: Math.min(waveNumber - 1, max)
+            scalingFactor: 1  // How much wave number affects crate count
+        },
+        
+        // Control which types of items can appear in random crates
+        allowedContents: {
+            ammo: false,        // DISABLED: No ammo from random crates
+            health: true,       // Health packs still allowed
+            barricade: true     // Barricades still allowed
+        },
+        
+        // Spawn timing (only applies if enabled)
+        spawnTiming: {
+            startFromWave: 2,   // First wave that spawns random crates
+            spawnDelay: 0       // Delay in ms after wave starts
+        },
+        
+        // Content weights (higher = more likely to spawn)
+        contentWeights: {
+            ammo: 30,
+            health: 30,
+            barricade: 40
+        },
+        
+        // Amount ranges for each content type
+        contentAmounts: {
+            ammo: { base: 30, bonus: 10 },        // 30-40 bullets
+            health: { base: 50, bonus: 10 },      // 50-60 health
+            barricade: { base: 2, bonus: 3 }      // 2-5 barricades
+        }
+    },
+
+    // === CRASH SITE LOOT CRATES ===
+    // Control over the free loot crates that spawn at the crash site
+    crashSiteLootCrates: {
+        // Master switch - disable this to remove free loot crates from crash site
+        enabled: false,  // DISABLED: No free loot crates, only supply crate ($)
+        
+        // Supply crate is always enabled regardless of this setting
+        // Players can still buy items from the blue supply crate ($)
+        
+        // Configuration for loot crates (if enabled)
+        cratePositions: [
+            { x: -80, y: -120 },  // Relative to helicopter position
+            { x: 80, y: 120 }     // Relative to helicopter position
+        ],
+        
+        // Override content generation for crash site crates
+        useRandomCrateContentRules: true  // Use same content rules as random crates
+    },
+
     // === SQUAD/NPC SETTINGS ===w
     squad: {
         // DYNAMIC SQUAD SYSTEM - No longer requires manual member definitions!
@@ -769,6 +830,162 @@ export const GameConfig = {
         }
 
         return { valid: true, cost: cost };
+    },
+
+    // === RANDOM CRATE SYSTEM METHODS ===
+
+    /**
+     * Check if random crate spawning is enabled
+     */
+    isRandomCrateSpawningEnabled() {
+        return this.randomCrates.enabled;
+    },
+
+    /**
+     * Get how many random crates should spawn for a given wave
+     */
+    getRandomCrateCount(waveNumber) {
+        if (!this.randomCrates.enabled) return 0;
+        if (waveNumber < this.randomCrates.spawnTiming.startFromWave) return 0;
+
+        const config = this.randomCrates.cratesPerWave;
+        const baseCount = Math.min(waveNumber - 1, config.max);
+        return Math.max(config.min, baseCount);
+    },
+
+    /**
+     * Generate random crate contents respecting the allowed content types
+     */
+    generateRandomCrateContents() {
+        if (!this.randomCrates.enabled) return null;
+
+        // Filter content types to only allowed ones
+        const allowedTypes = [];
+        Object.keys(this.randomCrates.allowedContents).forEach(type => {
+            if (this.randomCrates.allowedContents[type]) {
+                allowedTypes.push({
+                    type: type,
+                    weight: this.randomCrates.contentWeights[type] || 30
+                });
+            }
+        });
+
+        if (allowedTypes.length === 0) {
+            console.warn('⚠️ No allowed content types for random crates');
+            return null;
+        }
+
+        // Select random type based on weights
+        const totalWeight = allowedTypes.reduce((sum, content) => sum + content.weight, 0);
+        const random = Math.random() * totalWeight;
+        
+        let weightSum = 0;
+        for (const content of allowedTypes) {
+            weightSum += content.weight;
+            if (random <= weightSum) {
+                const amounts = this.randomCrates.contentAmounts[content.type];
+                const amount = amounts.base + Math.floor(Math.random() * amounts.bonus);
+                
+                return {
+                    type: content.type,
+                    amount: amount
+                };
+            }
+        }
+
+        // Fallback to first allowed type
+        const fallbackType = allowedTypes[0].type;
+        const amounts = this.randomCrates.contentAmounts[fallbackType];
+        return {
+            type: fallbackType,
+            amount: amounts.base
+        };
+    },
+
+    /**
+     * Toggle random crate spawning on/off
+     */
+    setRandomCrateSpawning(enabled) {
+        this.randomCrates.enabled = enabled;
+        console.log(`📦 Random crate spawning ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        if (!enabled) {
+            console.log('💰 Players can only get supplies from the main supply crate (blue $)');
+        }
+        return this.randomCrates.enabled;
+    },
+
+    /**
+     * Toggle specific content types in random crates
+     */
+    setRandomCrateContent(contentType, allowed) {
+        if (this.randomCrates.allowedContents.hasOwnProperty(contentType)) {
+            this.randomCrates.allowedContents[contentType] = allowed;
+            console.log(`📦 Random crate content '${contentType}' ${allowed ? 'ENABLED' : 'DISABLED'}`);
+            return true;
+        }
+        console.warn(`❌ Unknown content type: ${contentType}`);
+        return false;
+    },
+
+    /**
+     * Get random crate configuration summary
+     */
+    getRandomCrateStatus() {
+        const config = this.randomCrates;
+        const enabledContent = Object.keys(config.allowedContents)
+            .filter(type => config.allowedContents[type]);
+        
+        return {
+            enabled: config.enabled,
+            enabledContent: enabledContent,
+            cratesPerWave: config.cratesPerWave,
+            startFromWave: config.spawnTiming.startFromWave
+        };
+    },
+
+    // === CRASH SITE LOOT CRATE METHODS ===
+
+    /**
+     * Check if crash site loot crates are enabled
+     */
+    areCrashSiteLootCratesEnabled() {
+        return this.crashSiteLootCrates.enabled;
+    },
+
+    /**
+     * Toggle crash site loot crates on/off
+     */
+    setCrashSiteLootCrates(enabled) {
+        this.crashSiteLootCrates.enabled = enabled;
+        console.log(`📦 Crash site loot crates ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        if (!enabled) {
+            console.log('💰 Players can only get free supplies from the supply crate ($) using points');
+        } else {
+            console.log('🎁 Players can collect free loot from brown crates at crash site');
+        }
+        return this.crashSiteLootCrates.enabled;
+    },
+
+    /**
+     * Get crash site loot crate positions relative to helicopter
+     */
+    getCrashSiteLootCratePositions() {
+        return this.crashSiteLootCrates.cratePositions;
+    },
+
+    /**
+     * Get comprehensive crate system status
+     */
+    getAllCrateStatus() {
+        return {
+            randomCrates: this.getRandomCrateStatus(),
+            crashSiteLootCrates: {
+                enabled: this.crashSiteLootCrates.enabled,
+                positions: this.crashSiteLootCrates.cratePositions.length,
+                useRandomContentRules: this.crashSiteLootCrates.useRandomCrateContentRules
+            },
+            supplyCrateAlwaysEnabled: true
+        };
     }
 };
 
@@ -787,6 +1004,15 @@ if (typeof window !== 'undefined') {
     console.log('  GameConfig.getItemCost("sentryGun") - Get cost of specific item');
     console.log('  GameConfig.canAffordItem("sentryGun", 150) - Check if points are enough');
     console.log('  GameConfig.getPurchaseInfo("sentryGun") - Get detailed purchase info');
+    console.log('  📦 RANDOM CRATE SYSTEM:');
+    console.log('  GameConfig.setRandomCrateSpawning(true/false) - Enable/disable random crates');
+    console.log('  GameConfig.setRandomCrateContent("ammo", false) - Disable ammo in random crates');
+    console.log('  GameConfig.getRandomCrateStatus() - Show current random crate settings');
+    console.log('  GameConfig.getRandomCrateCount(5) - How many crates spawn on wave 5');
+    console.log('  📦 CRASH SITE LOOT CRATES:');
+    console.log('  GameConfig.setCrashSiteLootCrates(true/false) - Enable/disable free loot at crash site');
+    console.log('  GameConfig.areCrashSiteLootCratesEnabled() - Check if crash site loot enabled');
+    console.log('  GameConfig.getAllCrateStatus() - Show all crate system settings');
     console.log('  🌊 PROGRESSIVE SCALING:');
     console.log('  GameConfig.previewWaveScaling(10) - See scaling for specific wave');
     console.log('  GameConfig.showScalingCurve(1, 20) - Show scaling curve for waves 1-20');
@@ -794,7 +1020,10 @@ if (typeof window !== 'undefined') {
     console.log('  ⚙️ CURRENT SETTINGS:');
     console.log('  GameConfig.currentDifficulty =', GameConfig.currentDifficulty);
     console.log('  Current squad size:', GameConfig.getSquadSize(), 'members');
+    console.log('  Random crates enabled:', GameConfig.randomCrates.enabled);
+    console.log('  Crash site loot crates enabled:', GameConfig.crashSiteLootCrates.enabled);
     console.log('  🎯 Progressive difficulty makes zombies +8% health, +4% speed, +6% spawn rate per wave!');
     console.log('  💰 PRICING: Sentry Gun = 100pts (10 zombies), Barricade = 25pts (3 zombies), Health = 50pts (5 zombies)');
     console.log('  📦 Look for blue supply crates ($) near the crash site to purchase items!');
+    console.log('  🚫 All free crates are DISABLED - use the supply crate ($) to buy equipment!');
 } 

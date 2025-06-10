@@ -2449,6 +2449,19 @@ export class GameScene extends Phaser.Scene {
             this.spawnRandomCrates(cratesPerWave);
         }
         
+        // Spawn random military crates based on GameConfig settings
+        if (GameConfig.isRandomCrateSpawningEnabled() && currentWave >= GameConfig.randomCrates.spawnTiming.startFromWave) {
+            const cratesPerWave = GameConfig.getRandomCrateCount(currentWave);
+            if (cratesPerWave > 0) {
+                console.log(`📦 Spawning ${cratesPerWave} random crates for wave ${currentWave} (GameConfig controlled)`);
+                this.spawnRandomCrates(cratesPerWave);
+            } else {
+                console.log(`📦 Random crate spawning disabled via GameConfig for wave ${currentWave}`);
+            }
+        } else if (!GameConfig.isRandomCrateSpawningEnabled()) {
+            console.log(`🚫 Random crate spawning is disabled - players must use supply crates ($) to buy items`);
+        }
+        
         
         window.updateUI.wave(currentWave);
         window.updateUI.zombiesLeft(this.zombiesInWave);
@@ -5192,39 +5205,64 @@ export class GameScene extends Phaser.Scene {
             const helicopterX = 1000;
             const helicopterY = 750;
             
-            // Regular loot crates
-            const lootCratePositions = [
-                {x: helicopterX - 80, y: helicopterY - 120},
-                {x: helicopterX + 80, y: helicopterY + 120}
-            ];
-            
             // Supply crate position (closer to spawn point for easy access)
             const supplyCratePosition = {x: helicopterX - 150, y: helicopterY + 50};
             
-            console.log(`📦 Creating ${lootCratePositions.length} loot crates and 1 supply crate...`);
             let successfulCrates = 0;
+            let plannedCrates = 1; // Always plan for 1 supply crate
             
-            // Create regular loot crates
-            lootCratePositions.forEach((pos, index) => {
-                try {
-                    const lootCrate = new MilitaryCrate(this, pos.x, pos.y, null, false); // false = loot crate
-                    
-                    if (!lootCrate || !lootCrate.active || !lootCrate.isActive) {
-                        console.error('❌ Loot crate creation failed at', pos.x, pos.y);
-                        return;
+            // === CRASH SITE LOOT CRATES (CONFIGURABLE) ===
+            // Only create loot crates if enabled in GameConfig
+            if (GameConfig.areCrashSiteLootCratesEnabled()) {
+                console.log('📦 Crash site loot crates are ENABLED - creating free loot crates');
+                
+                // Regular loot crates (from GameConfig positions)
+                const lootCratePositions = GameConfig.getCrashSiteLootCratePositions().map(pos => ({
+                    x: helicopterX + pos.x,
+                    y: helicopterY + pos.y
+                }));
+                
+                plannedCrates += lootCratePositions.length;
+                console.log(`📦 Creating ${lootCratePositions.length} loot crates and 1 supply crate...`);
+                
+                // Create regular loot crates
+                lootCratePositions.forEach((pos, index) => {
+                    try {
+                        // Use random crate content rules if specified
+                        let contents = null;
+                        if (GameConfig.crashSiteLootCrates.useRandomCrateContentRules) {
+                            contents = GameConfig.generateRandomCrateContents();
+                            if (!contents) {
+                                console.log(`📦 No valid content types for crash site loot crate ${index + 1}, skipping`);
+                                return;
+                            }
+                        }
+                        
+                        const lootCrate = new MilitaryCrate(this, pos.x, pos.y, contents, false); // false = loot crate
+                        
+                        if (!lootCrate || !lootCrate.active || !lootCrate.isActive) {
+                            console.error('❌ Loot crate creation failed at', pos.x, pos.y);
+                            return;
+                        }
+                        
+                        this.militaryCrateList.push(lootCrate);
+                        successfulCrates++;
+                        
+                        const contentType = lootCrate.contents ? lootCrate.contents.type : 'random';
+                        console.log(`✅ Crash site loot crate ${index + 1} placed at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) with ${contentType}`);
+                        
+                    } catch (crateError) {
+                        console.error(`❌ Error creating crash site loot crate ${index + 1}:`, crateError);
                     }
-                    
-                    this.militaryCrateList.push(lootCrate);
-                    successfulCrates++;
-                    
-                    console.log(`✅ Loot crate ${index + 1} placed at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) with ${lootCrate.contents.type}`);
-                    
-                } catch (crateError) {
-                    console.error(`❌ Error creating loot crate ${index + 1}:`, crateError);
-                }
-            });
+                });
+            } else {
+                console.log('🚫 Crash site loot crates are DISABLED - no free loot crates will spawn');
+                console.log('💰 Players can only get supplies from the supply crate ($) using points');
+                console.log(`📦 Creating 0 loot crates and 1 supply crate...`);
+            }
             
-            // Create supply crate (blue tinted, purchasing interface)
+            // === SUPPLY CRATE (ALWAYS ENABLED) ===
+            // Create supply crate (blue tinted, purchasing interface) - always created regardless of config
             try {
                 const supplyCrate = new MilitaryCrate(this, supplyCratePosition.x, supplyCratePosition.y, null, true); // true = supply crate
                 
@@ -5235,18 +5273,25 @@ export class GameScene extends Phaser.Scene {
                     successfulCrates++;
                     
                     console.log(`✅ Supply crate placed at (${supplyCratePosition.x.toFixed(0)}, ${supplyCratePosition.y.toFixed(0)})`);
-                    console.log('🛒 Players can interact with the blue supply crate to purchase items with points!');
+                    console.log('🛒 Players can interact with the blue supply crate ($) to purchase items with points!');
                 }
                 
             } catch (supplyCrateError) {
                 console.error('❌ Error creating supply crate:', supplyCrateError);
             }
             
-            console.log(`📦 Crash site crate creation complete: ${successfulCrates}/${lootCratePositions.length + 1} successful`);
+            console.log(`📦 Crash site crate creation complete: ${successfulCrates}/${plannedCrates} successful`);
             
             if (successfulCrates > 0) {
-                console.log(`✅ Created ${successfulCrates} crates (${lootCratePositions.length} loot + 1 supply)`);
-                console.log('📦 Walk into brown crates for free supplies, blue supply crate to purchase with points!');
+                const lootCrateCount = GameConfig.areCrashSiteLootCratesEnabled() ? 
+                    GameConfig.getCrashSiteLootCratePositions().length : 0;
+                console.log(`✅ Created ${successfulCrates} crates (${lootCrateCount} loot + 1 supply)`);
+                
+                if (GameConfig.areCrashSiteLootCratesEnabled()) {
+                    console.log('📦 Walk into brown crates for free supplies, blue supply crate ($) to purchase with points!');
+                } else {
+                    console.log('💰 Only blue supply crate ($) available - use points to purchase items!');
+                }
             }
             
         } catch (error) {
@@ -5273,14 +5318,22 @@ export class GameScene extends Phaser.Scene {
                 
                 if (this.isValidCrateSpawnPosition(x, y)) {
                     try {
-                        const crate = new MilitaryCrate(this, x, y);
+                        // Use GameConfig to generate contents respecting allowed content types
+                        const contents = GameConfig.generateRandomCrateContents();
+                        
+                        if (!contents) {
+                            console.log(`📦 No valid content types allowed for random crates, skipping spawn`);
+                            continue;
+                        }
+                        
+                        const crate = new MilitaryCrate(this, x, y, contents);
                         
                         if (crate && crate.active && crate.isActive) {
                             this.militaryCrateList.push(crate);
                             successfulSpawns++;
                             spawned = true;
                             
-                            console.log(`📦 Spawned random crate at (${x}, ${y}) with ${crate.contents.type}`);
+                            console.log(`📦 Spawned random crate at (${x}, ${y}) with ${crate.contents.type} (GameConfig controlled)`);
                             this.createCrateSpawnEffect(x, y);
                         }
                     } catch (error) {

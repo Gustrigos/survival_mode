@@ -868,17 +868,22 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
         if (!this.isActive || this.isCollected) return;
         
         // Check if player has moved away from supply crate (auto-close purchase UI)
-        if (this.isSupplyCrate && this.purchasingPlayer && this.purchaseUIElements) {
-            const distanceToPlayer = Phaser.Math.Distance.Between(
-                this.x, this.y, 
-                this.purchasingPlayer.x, this.purchasingPlayer.y
-            );
+        if (this.isSupplyCrate && this.purchaseUIElements) {
+            // Use scene.player for consistency and as a fallback
+            const player = this.purchasingPlayer || this.scene.player;
             
-            // FIXED: Much smaller distance - interface disappears very quickly when player moves away
-            if (distanceToPlayer > 40) {
-                console.log('🛒 Player moved away from supply crate, closing purchase interface instantly');
-                this.destroyPurchaseUI();
-                this.purchasingPlayer = null;
+            if (player) {
+                const distanceToPlayer = Phaser.Math.Distance.Between(
+                    this.x, this.y, 
+                    player.x, player.y
+                );
+                
+                // FIXED: Increased distance - interface disappears when player moves away
+                if (distanceToPlayer > 80) {
+                    console.log('🛒 Player moved away from supply crate, closing purchase interface instantly');
+                    this.destroyPurchaseUI();
+                    this.purchasingPlayer = null;
+                }
             }
         }
         
@@ -889,8 +894,8 @@ export class MilitaryCrate extends Phaser.Physics.Arcade.Sprite {
                 this.scene.player.x, this.scene.player.y
             );
             
-            // FIXED: Smaller cooldown reset distance - only need to step back a little
-            if (distanceToPlayer > 50) {
+            // FIXED: Increased cooldown reset distance to match UI close distance
+            if (distanceToPlayer > 100) {
                 this.interfaceCooldown = false;
                 console.log('🛒 Supply crate cooldown reset - interface can open again when player approaches');
             }
